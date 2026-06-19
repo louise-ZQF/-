@@ -317,6 +317,59 @@ RSI(14): {m.rsi14:.0f}  估值分位: {(m.price_percentile or 0)*100:.0f}%  最�
     return results
 
 
+# ---------------------------------------------------------------------------
+# 基金筛选
+# ---------------------------------------------------------------------------
+
+def run_screener(category: str = "us_qdii") -> list:
+    """运行基金筛选器。"""
+    from fund_analyzer.config import load_settings
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.screener import screen_funds
+
+    settings = load_settings(DEFAULT_SETTINGS)
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=settings.datasource.cache_ttl_minutes,
+        timeout=settings.datasource.request_timeout,
+    )
+    em = EastMoney(http)
+    return screen_funds(http, em, category=category, top_n=20)
+
+
+def generate_alerts(funds_raw: List[dict]) -> list:
+    """为当前持仓生成智能提醒。"""
+    from fund_analyzer.config import load_settings, _parse_holding
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.portfolio import analyze_fund
+    from fund_analyzer.factors import compute_factor_scores
+    from fund_analyzer.screener import generate_alerts as gen_alerts
+
+    settings = load_settings(DEFAULT_SETTINGS)
+    holdings = [_parse_holding(h) for h in funds_raw]
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=settings.datasource.cache_ttl_minutes,
+        timeout=settings.datasource.request_timeout,
+    )
+    em = EastMoney(http)
+
+    fas = []
+    factor_data = {}
+    for h in holdings:
+        navpoints = em.history(h.code, size=100)
+        quote = em.realtime(h.code)
+        fa = analyze_fund(h, navpoints, quote, [], [], settings)
+        fas.append(fa)
+        navs = [p.nav for p in navpoints if p.nav]
+        if navs:
+            factor_data[h.code] = compute_factor_scores(navs)
+
+    return gen_alerts(fas, factor_data, settings)
+
+
 def save_holdings(holdings: List[dict], path: Optional[str] = None) -> int:
     path = path or holdings_path()
     cleaned = [_clean_holding(h) for h in holdings if str(h.get("code", "")).strip()]

@@ -24,6 +24,7 @@
     <button data-tab="dashboard" class="tab active">仪表盘</button>
     <button data-tab="holdings" class="tab">持仓管理</button>
     <button data-tab="watchlist" class="tab">🔍 自选分析</button>
+    <button data-tab="screener" class="tab">📋 基金筛选</button>
   </nav>
 
   <main>
@@ -36,6 +37,15 @@
       <div id="highlights" class="panel hidden">
         <div class="panel-title">📌 今日重点操作提示</div>
         <div id="highlightList" class="highlight-list"></div>
+      </div>
+
+      <!-- 智能提醒 -->
+      <div id="alertsPanel" class="panel hidden">
+        <div class="panel-head">
+          <div class="panel-title">🔔 智能操作提醒</div>
+          <button id="alertsRefreshBtn" class="btn ghost">🔄 刷新</button>
+        </div>
+        <div id="alertsList"></div>
       </div>
 
       <!-- 市场情绪体温计 -->
@@ -165,6 +175,23 @@
         <div id="wlStatus" class="save-msg" style="margin-top:8px"></div>
       </div>
       <div id="wlResults" class="wl-results"></div>
+    </section>
+
+    <!-- ===================== 基金筛选 ===================== -->
+    <section id="view-screener" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">📋 基金筛选器</div>
+          <div class="panel-head-actions">
+            <button class="btn ghost scr-cat active" data-scr="us-qdii">🇺🇸 美股QDII</button>
+            <button class="btn ghost scr-cat" data-scr="a-stock">🇨🇳 A股高夏普</button>
+            <button id="scrRunBtn" class="btn primary">🔍 开始筛选</button>
+          </div>
+        </div>
+        <p class="hint">基于天天基金排行 + 量化六因子 + 夏普比率 + 最大回撤，筛选值得关注的基金</p>
+        <div id="scrStatus" class="save-msg" style="margin-top:8px"></div>
+      </div>
+      <div id="scrResults" class="wl-results"></div>
     </section>
   </main>
 
