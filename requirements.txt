@@ -3,9 +3,9 @@ requests>=2.28
 PyYAML>=6.0
 Jinja2>=3.1
 Flask>=3.0          # 可视化网站（python -m fund_analyzer serve）
-# 导入增强
+# 导入增强（OCR 可选，不装也能用）
 Pillow>=10.0        # OCR 图片处理
-pytesseract>=0.3.10 # OCR 识别（需系统安装 tesseract-ocr）
-easyocr>=1.7        # OCR 纯 Python 备选方案（无需系统依赖）
+# pytesseract  # OCR 方案1（需系统 tesseract，可选）
+# easyocr       # OCR 方案2（纯 Python 备选，较大会拖慢部署，可选）
 # AI 分析
 openai>=1.0         # DeepSeek API 兼容 OpenAI SDK

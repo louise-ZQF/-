@@ -1,8 +1,13 @@
-"""AI 分析：调 DeepSeek API，结合行情+新闻+机构研报，对持仓和组合给判断。"""
+"""AI 分析：调 DeepSeek API，结合行情+新闻+网络搜索，对持仓和组合给判断。
+
+性能：结果缓存 2 小时，请求并发，总超时 30s。
+"""
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import re
+import time
 import urllib.request
 import urllib.parse
 from dataclasses import dataclass, field
@@ -10,6 +15,29 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from openai import OpenAI
+
+
+# ---------------------------------------------------------------------------
+# 简单缓存
+# ---------------------------------------------------------------------------
+
+_cache: dict = {}
+_CACHE_TTL = 7200  # 2 小时
+
+
+def _cached(key: str, factory, ttl: int = _CACHE_TTL):
+    now = time.time()
+    entry = _cache.get(key)
+    if entry and now - entry["ts"] < ttl:
+        return entry["val"]
+    val = factory()
+    _cache[key] = {"ts": now, "val": val}
+    return val
+
+
+# 总超时预算
+_SEARCH_TIMEOUT = 5  # 单个搜索超时
+_TOTAL_BUDGET = 30   # 总预算秒
 
 
 # ---------------------------------------------------------------------------
@@ -111,10 +139,10 @@ def build_fund_prompt(funds: List, news: Dict[str, List[str]] = None,
     if macro_events:
         macro_block = "\n## 近期宏观事件/催化剂\n" + "\n".join(f"- {e}" for e in macro_events[:10])
 
-    # 机构观点
+    # 网络搜索参考（非正式研报）
     inst_block = ""
     if institutional_views:
-        inst_block = "\n## 主要机构观点\n" + "\n".join(f"- {v}" for v in institutional_views[:8])
+        inst_block = "\n## 网络搜索参考（非正式研报，仅供参考）\n" + "\n".join(f"- {v}" for v in institutional_views[:6])
 
     header = f"""你是华尔街顶级基金分析师。今天是{datetime.now().strftime('%Y年%m月%d日')}。
 
@@ -327,85 +355,74 @@ def ai_analyze_portfolio(funds: List, news: Dict[str, List[str]] = None,
 
 
 # ---------------------------------------------------------------------------
-# 新闻搜索（增强版：机构研报 + 宏观事件）
+# 新闻搜索（缓存 + 并发 + 超时；标注为网络搜索结果，非正式研报）
 # ---------------------------------------------------------------------------
 
-def search_news_for_fund(name: str, keywords: List[str] = None) -> List[str]:
-    """搜索基金相关新闻。"""
+def _bing_search(query: str) -> List[str]:
+    """Bing News RSS，返回标题列表。5s 超时。"""
     try:
-        query = name
-        if keywords:
-            query += " " + " ".join(keywords[:3])
         encoded = urllib.parse.quote(query)
         url = f"https://www.bing.com/news/search?q={encoded}&format=rss"
         req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (compatible; FundAnalyzer/1.0)",
         })
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=_SEARCH_TIMEOUT) as resp:
             data = resp.read().decode("utf-8", errors="replace")
             titles = re.findall(r'<title>(.+?)</title>', data)
-            return [t for t in titles if t and "Bing" not in t and "必应" not in t and "Microsoft" not in t][:5]
-    except Exception as e:
-        print(f"[news] 搜索 {name} 新闻失败: {e}")
+            return [t for t in titles if t and "Bing" not in t and "必应" not in t and "Microsoft" not in t]
+    except Exception:
         return []
 
 
+def search_news_for_fund(name: str, keywords: List[str] = None) -> List[str]:
+    """搜索基金相关网络新闻。"""
+    query = name
+    if keywords:
+        query += " " + " ".join(keywords[:3])
+    key = f"fund_news:{query}"
+    return _cached(key, lambda: _bing_search(query)[:5], 1800)
+
+
 def search_institutional_views(funds: List) -> List[str]:
-    """搜索摩根大通、花旗、高盛、摩根士丹利等机构最新观点。"""
-    sources = ["摩根大通", "花旗", "高盛", "摩根士丹利", "贝莱德", "中金"]
-    topics = _extract_topics(funds)
-
-    views = []
-    for topic in topics[:3]:
-        for source in sources[:3]:
-            try:
-                query = f"{source} {topic} 最新观点 2026"
-                encoded = urllib.parse.quote(query)
-                url = f"https://www.bing.com/news/search?q={encoded}&format=rss"
-                req = urllib.request.Request(url, headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; FundAnalyzer/1.0)",
-                })
-                with urllib.request.urlopen(req, timeout=8) as resp:
-                    data = resp.read().decode("utf-8", errors="replace")
-                    titles = re.findall(r'<title>(.+?)</title>', data)
-                    for t in titles:
-                        if t and "Bing" not in t and "必应" not in t and "Microsoft" not in t and len(t) > 10:
-                            views.append(f"[{source}] {t}")
-            except Exception:
-                continue
-
-    return views[:10]
+    """搜索机构相关网络新闻（标注来源，非正式研报）。"""
+    def _fetch():
+        topics = _extract_topics(funds)
+        queries = []
+        for topic in topics[:2]:
+            for src in ["摩根大通", "高盛", "花旗", "贝莱德"]:
+                queries.append(f"{src} {topic}")
+        views = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            futures = {ex.submit(_bing_search, q): q for q in queries[:8]}
+            for fut in concurrent.futures.as_completed(futures, timeout=min(15, _TOTAL_BUDGET)):
+                try:
+                    for t in fut.result() or []:
+                        if len(t) > 10:
+                            views.append(f"[网络搜索] {t}")
+                except Exception:
+                    continue
+        return views[:6]
+    return _cached("inst_views", _fetch, 3600)
 
 
 def search_macro_events() -> List[str]:
-    """搜索未来1-2周的宏观事件（美联储、CPI、财报等）。"""
-    today = datetime.now()
-    events = []
-
-    # 搜索宏观事件
-    queries = [
-        "美联储 利率决议 2026年6月",
-        "美股 CPI 非农 经济数据 2026年6月",
-        "美股 财报季 科技股 2026",
-        "纳斯达克 标普500 市场展望 2026年6月",
-    ]
-    for q in queries[:2]:
-        try:
-            encoded = urllib.parse.quote(q)
-            url = f"https://www.bing.com/news/search?q={encoded}&format=rss"
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "Mozilla/5.0 (compatible; FundAnalyzer/1.0)",
-            })
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                data = resp.read().decode("utf-8", errors="replace")
-                titles = re.findall(r'<title>(.+?)</title>', data)
-                for t in titles:
-                    if t and "Bing" not in t and "必应" not in t and "Microsoft" not in t and len(t) > 15:
-                        events.append(f"📅 {t}")
-        except Exception:
-            continue
-
-    return events[:8]
+    """搜索近期宏观事件（动态日期）。"""
+    def _fetch():
+        now = datetime.now()
+        m = now.strftime("%Y年%-m月")
+        queries = [f"美联储 利率 {m}", f"美股 经济数据 CPI {m}"]
+        events = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+            futures = [ex.submit(_bing_search, q) for q in queries]
+            for fut in concurrent.futures.as_completed(futures, timeout=min(10, _TOTAL_BUDGET)):
+                try:
+                    for t in fut.result() or []:
+                        if len(t) > 15:
+                            events.append(f"📅 {t}")
+                except Exception:
+                    continue
+        return events[:6]
+    return _cached("macro_events", _fetch, 3600)
 
 
 def _extract_topics(funds: List) -> List[str]:
@@ -425,25 +442,18 @@ def _extract_topics(funds: List) -> List[str]:
             topics.append("新兴市场")
     if not topics:
         topics = ["美股 纳斯达克", "全球科技", "QDII基金"]
-    return list(dict.fromkeys(topics))  # 去重保序
+    return list(dict.fromkeys(topics))
 
 
 def build_news_feed(news: Dict[str, List[str]], macro_events: List[str],
                     inst_views: List[str]) -> List[dict]:
     """构建前端新闻 feed。"""
     feed = []
-
-    # 宏观事件
-    for e in macro_events[:4]:
+    for e in macro_events[:3]:
         feed.append({"type": "macro", "text": e})
-
-    # 机构观点
-    for v in inst_views[:4]:
+    for v in inst_views[:3]:
         feed.append({"type": "institution", "text": v})
-
-    # 基金相关新闻
     for code, items in (news or {}).items():
         for item in items[:2]:
             feed.append({"type": "fund", "code": code, "text": item})
-
-    return feed[:15]
+    return feed[:12]

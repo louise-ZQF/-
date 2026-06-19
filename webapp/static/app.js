@@ -500,21 +500,14 @@ async function runAiAnalysis(){
       }).join('');
       tagsEl.innerHTML=tags;
 
-      // 覆盖基金卡片：AI 判断替换机械操作建议
+      // 基金卡片：AI 判断与机械信号并列展示
       Object.entries(d.funds).forEach(([code,s])=>{
         $$('.fund').forEach(card=>{
           const codeEl=card.querySelector('.fund-code');
           if(codeEl && codeEl.textContent.includes(code)){
             const cls=s.sentiment==='看好'||s.sentiment==='强烈看好'?'ai-bullish':(s.sentiment==='谨慎'||s.sentiment==='规避'?'ai-bearish':'ai-neutral');
             const icon=s.sentiment==='看好'||s.sentiment==='强烈看好'?'🟢':(s.sentiment==='谨慎'||s.sentiment==='规避'?'🔴':'🟡');
-            // 替换旧 badge
-            const oldBadge=card.querySelector('.badge');
-            if(oldBadge){
-              oldBadge.textContent=s.suggestion||s.sentiment;
-              const sentCls=cls==='ai-bullish'?'hold_pos':(cls==='ai-bearish'?'trim':'hold');
-              oldBadge.className='badge '+sentCls;
-            }
-            // 加 AI badge
+            // 加 AI badge（不覆盖机械信号）
             const existAi=card.querySelector('.ai-badge');
             if(existAi) existAi.remove();
             const head=card.querySelector('.fund-head');
@@ -522,6 +515,15 @@ async function runAiAnalysis(){
             aiBadge.className='ai-badge '+cls;
             aiBadge.textContent=icon+' AI: '+s.sentiment;
             head.appendChild(aiBadge);
+            // 高亮分歧
+            const mechBadge=card.querySelector('.badge');
+            const mechAction=mechBadge?.textContent||'';
+            const aiSug=s.suggestion||'';
+            const disagree=(mechAction.includes('暂停')||mechAction.includes('减仓')||mechAction.includes('卖出')) && (aiSug.includes('加大')||aiSug.includes('继续'));
+            if(disagree && mechBadge){
+              mechBadge.style.border='2px dashed #f59e0b';
+              mechBadge.title='AI 与机械信号存在分歧';
+            }
           }
         });
       });
