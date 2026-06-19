@@ -23,6 +23,7 @@
   <nav class="tabs">
     <button data-tab="dashboard" class="tab active">仪表盘</button>
     <button data-tab="holdings" class="tab">持仓管理</button>
+    <button data-tab="watchlist" class="tab">🔍 自选分析</button>
   </nav>
 
   <main>
@@ -148,6 +149,22 @@
         </div>
         <div id="saveMsg" class="save-msg"></div>
       </div>
+    </section>
+
+    <!-- ===================== 自选分析 ===================== -->
+    <section id="view-watchlist" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">🔍 自选基金分析</div>
+          <div class="panel-head-actions">
+            <button id="wlAnalyzeBtn" class="btn primary">分析</button>
+          </div>
+        </div>
+        <p class="hint">输入基金代码（多个用逗号或换行分隔），AI 帮你判断看不看好、适不适合现在买入</p>
+        <textarea id="wlInput" rows="3" placeholder="270042, 050025, 019736&#10;或每行一个代码"></textarea>
+        <div id="wlStatus" class="save-msg" style="margin-top:8px"></div>
+      </div>
+      <div id="wlResults" class="wl-results"></div>
     </section>
   </main>
 

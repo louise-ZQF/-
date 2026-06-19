@@ -205,6 +205,21 @@ main{max-width:1040px; margin:0 auto; padding:18px}
 .thermo-dot{position:absolute; top:-3px; width:12px; height:12px; border-radius:50%; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.2); transform:translateX(-50%)}
 .thermo-desc{font-size:10.5px; color:var(--muted); line-height:1.4; margin-top:4px}
 
+/* ---------- 自选分析 ---------- */
+#wlInput{width:100%; border:1px solid var(--line); border-radius:9px; padding:10px; font-size:13px; resize:vertical; font-family:monospace; margin-top:8px}
+.wl-results{display:flex; flex-direction:column; gap:12px; margin-top:14px}
+.wl-card{background:var(--card); border-radius:var(--radius); padding:14px 16px; box-shadow:var(--shadow)}
+.wl-card.wl-error{color:var(--neg); font-size:13px}
+.wl-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px}
+.wl-name{font-weight:700; font-size:14px}
+.wl-code{color:var(--muted); font-size:12px}
+.wl-judgment,.wl-buy{padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; color:#fff}
+.wl-metrics{display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; margin-bottom:8px}
+.wl-metrics span{white-space:nowrap}
+.wl-advice{font-size:13px; color:#374151; background:#f0f7ff; padding:8px 12px; border-radius:8px; margin:6px 0}
+.wl-risk-opp{display:flex; gap:12px; flex-wrap:wrap; font-size:12px; margin-top:6px}
+.wl-risk{color:var(--neg)} .wl-opp{color:var(--pos)}
+
 @media (max-width:760px){
   .thermo-grid{grid-template-columns:repeat(2,1fr)}
 }

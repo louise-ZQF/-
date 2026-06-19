@@ -531,4 +531,61 @@ async function runAiAnalysis(){
   }
 }
 
+// ---------- 自选分析 ----------
+$('#wlAnalyzeBtn')?.addEventListener('click', analyzeWatchlist);
+
+async function analyzeWatchlist(){
+  const raw=$('#wlInput').value.trim();
+  if(!raw){ $('#wlStatus').textContent='请输入基金代码'; return; }
+  const codes=raw.split(/[,\n\s]+/).filter(c=>c.length===6);
+  if(!codes.length){ $('#wlStatus').textContent='未识别到有效代码'; return; }
+
+  $('#wlStatus').textContent=`分析 ${codes.length} 只基金中…`;
+  $('#wlResults').innerHTML='<div class="loading">AI 分析中…</div>';
+
+  try{
+    const r=await fetch('/api/watchlist/analyze?codes='+codes.join(','));
+    const d=await r.json();
+    if(d.error){ $('#wlStatus').textContent=d.error; return; }
+
+    $('#wlStatus').textContent=`分析完成 ✅`;
+    renderWatchlist(d.results||[]);
+  }catch(e){
+    $('#wlStatus').textContent='分析失败: '+e.message;
+    $('#wlResults').innerHTML='';
+  }
+}
+
+function renderWatchlist(results){
+  const el=$('#wlResults');
+  const judgmentColors={看好:'#16a34a', 中性:'#6b7280', 不看好:'#dc2626'};
+  const buyColors={是:'#16a34a', 等回调:'#f59e0b', 否:'#dc2626'};
+  el.innerHTML=results.map(r=>{
+    if(r.error) return `<div class="wl-card wl-error">${r.code}: ${r.error}</div>`;
+    const m=r.metrics||{};
+    const jc=judgmentColors[r.judgment]||'#6b7280';
+    const bc=buyColors[r.buy_signal]||'#6b7280';
+    return `<div class="wl-card">
+      <div class="wl-head">
+        <span class="wl-name">${esc(r.name)}</span>
+        <span class="wl-code">${esc(r.code)}</span>
+        <span class="wl-judgment" style="background:${jc}">${esc(r.judgment)}</span>
+        <span class="wl-buy" style="background:${bc}">${esc(r.buy_signal=='是'?'✅ 适合买入':r.buy_signal=='等回调'?'⏳ 等回调':r.buy_signal=='否'?'❌ 不建议':'—')}</span>
+      </div>
+      <div class="wl-metrics">
+        <span>净值 ${num(m.last_nav)}</span>
+        <span>近1月 ${pctHtml(m.ret_1m)}</span>
+        <span>近3月 ${pctHtml(m.ret_3m)}</span>
+        <span>RSI ${m.rsi14!=null?Math.round(m.rsi14):'—'}</span>
+        <span>估值分位 ${m.price_percentile!=null?Math.round(m.price_percentile*100)+'%':'—'}</span>
+      </div>
+      ${r.advice ? `<div class="wl-advice"><b>建议：</b>${esc(r.advice)}</div>` : ''}
+      <div class="wl-risk-opp">
+        ${r.risk ? `<span class="wl-risk">⚠️ 风险：${esc(r.risk)}</span>` : ''}
+        ${r.opportunity ? `<span class="wl-opp">💡 机会：${esc(r.opportunity)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 document.addEventListener('DOMContentLoaded', init);

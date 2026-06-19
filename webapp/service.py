@@ -186,6 +186,121 @@ def _clean_holding(d: dict) -> dict:
     return out
 
 
+# ---------------------------------------------------------------------------
+# 自选基金分析
+# ---------------------------------------------------------------------------
+
+def analyze_watchlist(codes: List[str]) -> List[dict]:
+    """分析自选基金列表，返回每只的看好/不看好+买入建议。"""
+    from fund_analyzer.ai_analyst import call_deepseek, parse_ai_response
+    from fund_analyzer.config import load_settings, _parse_holding
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.datasource.market_index import MarketIndex
+    from fund_analyzer.portfolio import analyze_fund, compute_metrics
+    from fund_analyzer.importer import search_fund
+
+    settings = load_settings(DEFAULT_SETTINGS)
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=settings.datasource.cache_ttl_minutes,
+        timeout=settings.datasource.request_timeout,
+    )
+    em = EastMoney(http)
+    mi = MarketIndex(http)
+    indicators = mi.get_market_snapshot()
+
+    # 市场情绪摘要
+    market_summary = "\n".join(
+        f"{i['label']}: {i['value']}（{'偏高' if i['level']=='high' else '偏低' if i['level']=='low' else '正常'}）"
+        for i in indicators[:6]
+    )
+
+    results = []
+    for code in codes:
+        # 获取基金信息
+        info = search_fund(code, em)
+        if not info:
+            results.append({"code": code, "error": "未找到该基金"})
+            continue
+
+        # 获取历史净值 + 实时行情
+        navpoints = em.history(code, size=100)
+        quote = em.realtime(code)
+
+        # 构造临时 Holding + 计算指标
+        h = _parse_holding({"code": code, "name": info.name, "asset_class": info.asset_class})
+        m = compute_metrics(h, navpoints, quote, settings)
+        fa = analyze_fund(h, navpoints, quote, [], [], settings)
+
+        # 构建买入分析 prompt
+        fund_text = f"""基金代码: {code}
+名称: {info.name}
+类型: {info.asset_class}
+最新净值: {m.last_nav}
+近1周: {(m.ret_1w or 0)*100:+.1f}%  近1月: {(m.ret_1m or 0)*100:+.1f}%  近3月: {(m.ret_3m or 0)*100:+.1f}%
+RSI(14): {m.rsi14:.0f}  估值分位: {(m.price_percentile or 0)*100:.0f}%  最大回撤: {(m.max_drawdown or 0)*100:.1f}%
+年化波动: {(m.vol_annual or 0)*100:.1f}%  夏普: {m.sharpe or 0:.2f}"""
+
+        prompt = f"""你是顶级基金分析师。判断这只基金现在是否值得买入。
+
+{fund_text}
+
+## 当前市场环境
+{market_summary}
+
+## 请给出判断（简洁，3-4句）：
+1. 看好/中性/不看好 — 为什么？
+2. 现在适合买入吗？如果适合，建议什么价位/策略？
+3. 最大的风险和最大的机会各一句话
+
+格式：
+判断: 看好/中性/不看好
+适合买入: 是/否/等回调
+建议: （具体操作建议）
+风险: （最大风险）
+机会: （最大机会）"""
+
+        resp = call_deepseek(prompt, system="你是顶级基金分析师，回答简洁、具体、可执行。只输出结果，不解释。")
+        if not resp:
+            results.append({
+                "code": code, "name": info.name, "asset_class": info.asset_class,
+                "metrics": {
+                    "last_nav": m.last_nav, "ret_1m": m.ret_1m, "ret_3m": m.ret_3m,
+                    "rsi14": m.rsi14, "price_percentile": m.price_percentile,
+                    "max_drawdown": m.max_drawdown, "vol_annual": m.vol_annual, "sharpe": m.sharpe,
+                },
+                "error": "AI 分析暂时不可用（请设置 DEEPSEEK_API_KEY）",
+            })
+            continue
+
+        # 解析 AI 回复
+        lines = resp.strip().splitlines()
+        ai = {}
+        for line in lines:
+            for key in ["判断", "适合买入", "建议", "风险", "机会"]:
+                if line.startswith(f"{key}:") or line.startswith(f"{key}："):
+                    ai[key] = line.split(":", 1)[-1].split("：", 1)[-1].strip()
+
+        results.append({
+            "code": code,
+            "name": info.name,
+            "asset_class": info.asset_class,
+            "metrics": {
+                "last_nav": m.last_nav, "ret_1m": m.ret_1m, "ret_3m": m.ret_3m,
+                "rsi14": m.rsi14, "price_percentile": m.price_percentile,
+                "max_drawdown": m.max_drawdown, "vol_annual": m.vol_annual, "sharpe": m.sharpe,
+            },
+            "judgment": ai.get("判断", "—"),
+            "buy_signal": ai.get("适合买入", "—"),
+            "advice": ai.get("建议", "—"),
+            "risk": ai.get("风险", "—"),
+            "opportunity": ai.get("机会", "—"),
+        })
+
+    return results
+
+
 def save_holdings(holdings: List[dict], path: Optional[str] = None) -> int:
     path = path or holdings_path()
     cleaned = [_clean_holding(h) for h in holdings if str(h.get("code", "")).strip()]

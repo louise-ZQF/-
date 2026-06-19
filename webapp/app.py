@@ -158,4 +158,20 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    # ---- 自选基金分析 ----
+
+    @app.get("/api/watchlist/analyze")
+    def watchlist_analyze():
+        """分析自选基金：看好/不看好 + 适合买入吗。支持 ?code=270042 或 ?codes=270042,050025"""
+        raw = request.args.get("codes") or request.args.get("code", "")
+        codes = [c.strip() for c in raw.split(",") if c.strip() and len(c.strip()) == 6]
+        if not codes:
+            return jsonify({"error": "请提供基金代码，如 ?codes=270042,050025"}), 400
+        try:
+            results = service.analyze_watchlist(codes)
+            return jsonify({"ok": True, "results": results})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
     return app
