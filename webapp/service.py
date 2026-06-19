@@ -138,3 +138,112 @@ def save_holdings(holdings: List[dict], path: Optional[str] = None) -> int:
         f.write("# 由可视化网站「持仓管理」生成；也可手动编辑。\n")
         yaml.safe_dump({"holdings": cleaned}, f, allow_unicode=True, sort_keys=False)
     return len(cleaned)
+
+
+# ---------------------------------------------------------------------------
+# 导入服务
+# ---------------------------------------------------------------------------
+
+def auto_fill_fund(code: str) -> Optional[dict]:
+    """输入代码，从天天基金自动补全信息。"""
+    from fund_analyzer.config import load_settings
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.importer import search_fund
+
+    settings = load_settings(DEFAULT_SETTINGS)
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=settings.datasource.cache_ttl_minutes,
+        timeout=settings.datasource.request_timeout,
+    )
+    em = EastMoney(http)
+    info = search_fund(code, em)
+    if not info:
+        return None
+    return {
+        "code": info.code,
+        "name": info.name,
+        "asset_class": info.asset_class,
+        "tracking": {
+            "index": info.tracking_index or "",
+            "lag_days": info.tracking_lag_days,
+            "currency_hedged": False,
+        },
+        "annual_fee": info.annual_fee,
+        "dca_plan": None,
+    }
+
+
+def batch_auto_fill(codes: List[str]) -> List[dict]:
+    """批量自动补全。"""
+    results = []
+    for code in codes:
+        info = auto_fill_fund(code)
+        if info:
+            results.append(info)
+    return results
+
+
+def ocr_import(image_data: bytes) -> List[dict]:
+    """OCR 截图 → 自动补全的持仓列表。"""
+    from fund_analyzer.importer import ocr_funds_from_image
+
+    pairs = ocr_funds_from_image(image_data)
+    results = []
+    for code, amount in pairs:
+        info = auto_fill_fund(code)
+        if info:
+            info["current_value"] = amount
+            results.append(info)
+    return results
+
+
+def run_ai_analysis(funds: List[dict]) -> dict:
+    """对已有持仓运行 AI 分析。"""
+    from fund_analyzer.ai_analyst import ai_analyze_portfolio, search_news_for_fund
+    from fund_analyzer.config import load_settings, _parse_holding
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.portfolio import analyze_fund
+
+    settings = load_settings(DEFAULT_SETTINGS)
+    holdings = [_parse_holding(h) for h in funds]
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=settings.datasource.cache_ttl_minutes,
+        timeout=settings.datasource.request_timeout,
+    )
+    em = EastMoney(http)
+
+    fas = []
+    for h in holdings:
+        navpoints = em.history(h.code, size=100)
+        quote = em.realtime(h.code)
+        fas.append(analyze_fund(h, navpoints, quote, [], [], settings))
+
+    total_value = sum(fa.market_value or 0 for fa in fas)
+
+    # 搜索新闻
+    news = {}
+    for fa in fas:
+        n = search_news_for_fund(fa.holding.name)
+        if n:
+            news[fa.holding.code] = n
+
+    analysis = ai_analyze_portfolio(fas, news, total_value)
+
+    return {
+        "funds": {
+            code: {
+                "sentiment": s.sentiment,
+                "reason": s.reason,
+                "suggestion": s.suggestion,
+            }
+            for code, s in analysis.funds.items()
+        },
+        "portfolio_analysis": analysis.portfolio_analysis,
+        "sector_bias": analysis.sector_bias,
+        "macro_note": analysis.macro_note,
+        "dca_adjustments": analysis.dca_adjustments,
+    }
