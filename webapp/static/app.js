@@ -28,11 +28,10 @@ function money(x){ if(x==null||isNaN(x)) return '—'; return '¥'+Number(x).toL
 function num(x, d=4){ return (x==null||isNaN(x))?'—':Number(x).toFixed(d); }
 
 // ---------- 状态 ----------
-const state = { mode:'demo', data:null, holdings:[] };
+const state = { data:null, holdings:[] };
 
 // ---------- 初始化 ----------
 function init(){
-  $$('#modeSeg .seg-btn').forEach(b=>b.addEventListener('click', ()=>setMode(b.dataset.mode)));
   $$('.tab').forEach(t=>t.addEventListener('click', ()=>setTab(t.dataset.tab)));
   $('#refreshBtn').addEventListener('click', ()=>loadReport());
   $('#addRowBtn').addEventListener('click', ()=>{ state.holdings.push({}); renderRows(); });
@@ -41,22 +40,14 @@ function init(){
   $('#modalClose').addEventListener('click', closeModal);
   $('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeModal(); });
   initImport();
-  // Import buttons
   const bib=$('#batchImportBtn'); if(bib) bib.addEventListener('click', doBatchImport);
   const oib=$('#ocrImportBtn'); if(oib) oib.addEventListener('click', doOcrImport);
   const csb=$('#codeSearchBtn'); if(csb) csb.addEventListener('click', doCodeSearch);
-  // One-click daily DCA
   const sad=$('#setAllDailyBtn'); if(sad) sad.addEventListener('click', setAllDaily);
-  // AI analysis button
   const aab=$('#aiAnalyzeBtn'); if(aab) aab.addEventListener('click', runAiAnalysis);
   loadReport();
 }
 
-function setMode(mode){
-  state.mode = mode;
-  $$('#modeSeg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
-  loadReport();
-}
 function setTab(tab){
   $$('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
   $$('.view').forEach(v=>v.classList.remove('active'));
@@ -69,7 +60,7 @@ async function loadReport(){
   $('#fundList').innerHTML = '<div class="loading">加载中…</div>';
   $('#banner').classList.add('hidden');
   try{
-    const r = await fetch('/api/report?mode='+state.mode);
+    const r = await fetch('/api/report?mode=live');
     const data = await r.json();
     if(data.error){ showBanner('加载失败：'+data.error+'（实时模式需要能访问基金/行情数据的网络环境）', true); $('#fundList').innerHTML=''; return; }
     state.data = data;
@@ -90,7 +81,7 @@ function renderDashboard(d){
   $('#asOf').textContent = (d.title?d.title+' · ':'') + (d.as_of||'');
 
   if(d.empty){
-    showBanner(d.message || '尚未配置持仓。', true);
+    showBanner('还没有持仓数据。去「持仓管理」导入你的基金吧 👉', true);
   }
 
   // 概览卡片
@@ -320,7 +311,7 @@ async function saveHoldings(){
   try{
     const r=await fetch('/api/holdings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings})});
     const d=await r.json();
-    if(d.ok){ setSaveMsg(`已保存 ${d.saved} 只基金 ✅　切到「仪表盘」→「我的持仓」查看分析。`,'pos'); }
+    if(d.ok){ setSaveMsg(`已保存 ${d.saved} 只基金 ✅`,'pos'); setTab('dashboard'); loadReport(); }
     else setSaveMsg('保存失败：'+(d.error||'未知错误'),'neg');
   }catch(e){ setSaveMsg('保存失败：'+e.message,'neg'); }
   finally{ $('#saveBtn').disabled=false; }
