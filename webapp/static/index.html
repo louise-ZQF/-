@@ -37,6 +37,23 @@
         <div id="highlightList" class="highlight-list"></div>
       </div>
 
+      <!-- AI 分析面板 -->
+      <div id="aiPanel" class="panel hidden">
+        <div class="panel-head">
+          <div class="panel-title">🤖 AI 智能分析（DeepSeek + 机构研报）</div>
+          <button id="aiAnalyzeBtn" class="btn ghost">🔄 刷新分析</button>
+        </div>
+        <div id="aiPortfolio" class="ai-section"></div>
+        <div id="aiFundTags" class="ai-tags"></div>
+        <div id="aiDcaTips" class="ai-dca"></div>
+      </div>
+
+      <!-- 影响持仓的新闻事件 -->
+      <div id="newsPanel" class="panel hidden">
+        <div class="panel-title">📰 影响你持仓的新闻 & 事件</div>
+        <div id="newsFeed" class="news-feed"></div>
+      </div>
+
       <div class="grid-2">
         <div class="panel">
           <div class="panel-title">资产分布</div>
@@ -50,16 +67,6 @@
 
       <div class="panel-title section">持仓逐只分析</div>
       <div id="fundList" class="fund-list"><div class="loading">加载中…</div></div>
-
-      <div id="aiPanel" class="panel hidden">
-        <div class="panel-head">
-          <div class="panel-title">🤖 AI 智能分析（DeepSeek）</div>
-          <button id="aiAnalyzeBtn" class="btn ghost">🔄 刷新分析</button>
-        </div>
-        <div id="aiPortfolio" class="ai-section"></div>
-        <div id="aiFundTags" class="ai-tags"></div>
-        <div id="aiDcaTips" class="ai-dca"></div>
-      </div>
 
       <div id="notesPanel" class="panel hidden">
         <div class="panel-title">组合层建议</div>

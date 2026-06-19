@@ -474,6 +474,19 @@ async function runAiAnalysis(){
       });
     }
 
+    // 新闻 feed
+    const newsPanel=$('#newsPanel');
+    if(d.news_feed && d.news_feed.length && newsPanel){
+      newsPanel.classList.remove('hidden');
+      const icons={macro:'📅', institution:'🏦', fund:'📰'};
+      const feedHtml=d.news_feed.map(n=>{
+        const icon=icons[n.type]||'📌';
+        const cls=n.type==='macro'?'nf-macro':(n.type==='institution'?'nf-inst':'nf-fund');
+        return `<div class="nf-item ${cls}"><span class="nf-icon">${icon}</span><span class="nf-text">${esc(n.text)}</span></div>`;
+      }).join('');
+      $('#newsFeed').innerHTML=feedHtml;
+    }else if(newsPanel){ newsPanel.classList.add('hidden'); }
+
     // 定投调整建议
     const dcaEl=$('#aiDcaTips');
     if(d.dca_adjustments && Object.keys(d.dca_adjustments).length && dcaEl){
