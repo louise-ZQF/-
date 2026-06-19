@@ -45,8 +45,10 @@ function init(){
   const csb=$('#codeSearchBtn'); if(csb) csb.addEventListener('click', doCodeSearch);
   const sad=$('#setAllDailyBtn'); if(sad) sad.addEventListener('click', setAllDaily);
   const aab=$('#aiAnalyzeBtn'); if(aab) aab.addEventListener('click', runAiAnalysis);
-  loadReport();
-  loadAlerts();
+  loadReport().then(()=>{
+    loadAlerts();
+    runAiAnalysis();  // 自动跑 AI，覆盖机械信号
+  });
 }
 
 function setTab(tab){
@@ -480,32 +482,60 @@ async function runAiAnalysis(){
     if(d.macro_note) html+=`<div style="margin-top:8px"><b>🌍 宏观判断</b><br>${esc(d.macro_note)}</div>`;
     if(portfolioEl) portfolioEl.innerHTML=html||'<div class="empty">暂无</div>';
 
-    // 逐只标签
+    // 逐只标签 + 覆盖基金卡片的操作建议
     const tagsEl=$('#aiFundTags');
     if(d.funds && tagsEl){
+      const bullish=[], bearish=[], neutral=[];
       const tags=Object.entries(d.funds).map(([code,s])=>{
-        const cls=s.sentiment==='看好'?'bullish':(s.sentiment==='谨慎'?'bearish':'neutral');
-        const icon=s.sentiment==='看好'?'🟢':(s.sentiment==='谨慎'?'🔴':'🟡');
+        const cls=s.sentiment==='看好'||s.sentiment==='强烈看好'?'bullish':(s.sentiment==='谨慎'||s.sentiment==='规避'?'bearish':'neutral');
+        const icon=s.sentiment==='看好'||s.sentiment==='强烈看好'?'🟢':(s.sentiment==='谨慎'||s.sentiment==='规避'?'🔴':'🟡');
+        if(s.sentiment==='看好'||s.sentiment==='强烈看好') bullish.push({code,s});
+        else if(s.sentiment==='谨慎'||s.sentiment==='规避') bearish.push({code,s});
+        else neutral.push({code,s});
         return `<span class="ai-tag ${cls}">${icon} ${code}: ${s.sentiment} — ${esc(s.reason||'')} — ${esc(s.suggestion||'')}</span>`;
       }).join('');
       tagsEl.innerHTML=tags;
-      // Sync to fund cards
+
+      // 覆盖基金卡片：AI 判断替换机械操作建议
       Object.entries(d.funds).forEach(([code,s])=>{
         $$('.fund').forEach(card=>{
           const codeEl=card.querySelector('.fund-code');
           if(codeEl && codeEl.textContent.includes(code)){
-            const cls=s.sentiment==='看好'?'ai-bullish':(s.sentiment==='谨慎'?'ai-bearish':'ai-neutral');
-            const icon=s.sentiment==='看好'?'🟢':(s.sentiment==='谨慎'?'🔴':'🟡');
-            const existBadge=card.querySelector('.ai-badge');
-            if(existBadge) existBadge.remove();
+            const cls=s.sentiment==='看好'||s.sentiment==='强烈看好'?'ai-bullish':(s.sentiment==='谨慎'||s.sentiment==='规避'?'ai-bearish':'ai-neutral');
+            const icon=s.sentiment==='看好'||s.sentiment==='强烈看好'?'🟢':(s.sentiment==='谨慎'||s.sentiment==='规避'?'🔴':'🟡');
+            // 替换旧 badge
+            const oldBadge=card.querySelector('.badge');
+            if(oldBadge){
+              oldBadge.textContent=s.suggestion||s.sentiment;
+              const sentCls=cls==='ai-bullish'?'hold_pos':(cls==='ai-bearish'?'trim':'hold');
+              oldBadge.className='badge '+sentCls;
+            }
+            // 加 AI badge
+            const existAi=card.querySelector('.ai-badge');
+            if(existAi) existAi.remove();
             const head=card.querySelector('.fund-head');
-            const badge=document.createElement('span');
-            badge.className='ai-badge '+cls;
-            badge.textContent=icon+' '+s.sentiment;
-            head.appendChild(badge);
+            const aiBadge=document.createElement('span');
+            aiBadge.className='ai-badge '+cls;
+            aiBadge.textContent=icon+' AI: '+s.sentiment;
+            head.appendChild(aiBadge);
           }
         });
       });
+
+      // 用 AI 结果替换重点提示
+      const hp=$('#highlights'), hl=$('#highlightList');
+      if(bullish.length>0 || bearish.length>0){
+        hp.classList.remove('hidden'); hl.innerHTML='';
+        const all=[...bullish.map(x=>({...x, kind:'bullish'})), ...bearish.map(x=>({...x, kind:'bearish'})), ...neutral.map(x=>({...x, kind:'neutral'}))];
+        all.forEach(x=>{
+          const div=document.createElement('div'); div.className='hl';
+          const borderColor=x.kind==='bullish'?'#16a34a':(x.kind==='bearish'?'#dc2626':'#6b7280');
+          div.style.borderLeftColor=borderColor;
+          div.innerHTML=`<div><b>${esc(x.code)}</b> → <b style="color:${borderColor}">${esc(x.s.sentiment)}</b>
+            <div class="hl-reason">${esc(x.s.reason||'')} — ${esc(x.s.suggestion||'')}</div></div>`;
+          hl.appendChild(div);
+        });
+      }
     }
 
     // 新闻 feed
