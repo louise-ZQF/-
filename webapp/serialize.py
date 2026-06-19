@@ -110,8 +110,14 @@ def report_to_dict(rep: PortfolioReport, title: str, mode: str) -> dict:
     ]
 
     total_return = None
-    if rep.total_value and rep.total_cost:
-        total_return = rep.total_value / rep.total_cost - 1.0
+    # total_value 优先用 rep 的，否则汇总 current_value
+    tv = rep.total_value
+    if tv is None:
+        tv = sum(fa.holding.current_value for fa in rep.funds)
+    tc = rep.total_cost
+    if tv and tc:
+        total_return = tv / tc - 1.0
+    has_val = tv is not None and tv > 0
 
     # 重点提示
     highlight_kinds = {"buy", "caution", "trim", "sell"}
@@ -122,12 +128,12 @@ def report_to_dict(rep: PortfolioReport, title: str, mode: str) -> dict:
         "title": title,
         "mode": mode,
         "overview": {
-            "total_value": rep.total_value,
+            "total_value": tv,
             "total_implied_value": rep.total_implied_value,
             "est_today_change": rep.est_today_change,
-            "total_cost": rep.total_cost,
+            "total_cost": tc,
             "total_return": total_return,
-            "has_value": rep.total_value is not None,
+            "has_value": has_val,
         },
         "highlights": highlights,
         "funds": funds,
