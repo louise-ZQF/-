@@ -47,8 +47,12 @@ function init(){
   const aab=$('#aiAnalyzeBtn'); if(aab) aab.addEventListener('click', runAiAnalysis);
   loadReport().then(()=>{
     loadAlerts();
-    runAiAnalysis();  // 自动跑 AI，覆盖机械信号
+    runAiAnalysis();
+    loadXirr();
+    loadReturnCurve();
   });
+  // PWA
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
 }
 
 function setTab(tab){
@@ -560,6 +564,45 @@ async function runAiAnalysis(){
   }catch(e){
     if(portfolioEl) portfolioEl.innerHTML='<span class="neg">AI 分析失败: '+esc(e.message)+'</span>';
   }
+}
+
+// ---------- XIRR + 收益曲线 ----------
+async function loadXirr(){
+  try{
+    const r=await fetch('/api/xirr');
+    const d=await r.json();
+    if(d.error) return;
+    const ov=$('#overview');
+    const xirrCard=document.createElement('div'); xirrCard.className='card';
+    const xirrCls=d.xirr>0?'pos':'neg';
+    xirrCard.innerHTML=`<div class="k">📈 XIRR 真实年化收益</div><div class="v ${xirrCls}">${d.xirr>0?'+':''}${d.xirr.toFixed(1)}%</div><div class="sub">投入 ¥${Number(d.total_invested).toLocaleString()} · 收益 ¥${Number(d.total_return).toLocaleString()} · ${d.years.toFixed(1)}年</div>`;
+    ov.appendChild(xirrCard);
+  }catch(e){}
+}
+
+async function loadReturnCurve(){
+  try{
+    const r=await fetch('/api/snapshot/curve?days=90');
+    const d=await r.json();
+    if(!d.curve || d.curve.length<2) return;
+    const panel=$('#curvePanel'); if(!panel) return;
+    panel.classList.remove('hidden');
+    const values=d.curve.map(p=>p.total_value);
+    const min=Math.min(...values), max=Math.max(...values), range=(max-min)||1;
+    const w=600, h=100, pad=8;
+    const pts=d.curve.map((p,i)=>({x:i/(d.curve.length-1)*w, y:h-pad-(p.total_value-min)/range*(h-2*pad)}));
+    const line=pts.map((c,i)=>(i?'L':'M')+c.x.toFixed(1)+' '+c.y.toFixed(1)).join(' ');
+    const area='M0 '+h+' '+pts.map(c=>'L'+c.x.toFixed(1)+' '+c.y.toFixed(1)).join(' ')+` L${w} ${h} Z`;
+    const lastVal=d.curve[d.curve.length-1].total_value;
+    const firstVal=d.curve[0].total_value;
+    const chg=lastVal/firstVal-1;
+    const color=chg>=0?'#16a34a':'#dc2626';
+    $('#curveSVG').innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+      <path d="${area}" fill="${color}" opacity="0.1"/>
+      <path d="${line}" fill="none" stroke="${color}" stroke-width="2"/>
+    </svg>`;
+    $('#curveLabel').innerHTML=`<span style="color:${color};font-weight:700">累计 ${(chg*100).toFixed(1)}%</span> · ${d.curve.length} 天`;
+  }catch(e){}
 }
 
 // ---------- 自选分析 ----------
