@@ -556,6 +556,26 @@ async function analyzeWatchlist(){
   }
 }
 
+function renderFactorBars(factors){
+  if(!factors || !factors.scores) return '';
+  const s=factors.scores;
+  const colorMap=v=>v>=70?'#16a34a':(v>=50?'#f59e0b':'#dc2626');
+  const bars=factors.labels.map((l,i)=>{
+    const keys=['momentum','trend_quality','value','risk_adjusted','vol_regime','drawdown_recovery'];
+    const v=s[keys[i]]||50;
+    return `<div class="fb-row">
+      <span class="fb-label">${l}</span>
+      <div class="fb-track"><div class="fb-fill" style="width:${v}%;background:${colorMap(v)}"></div></div>
+      <span class="fb-val" style="color:${colorMap(v)}">${Math.round(v)}</span>
+    </div>`;
+  }).join('');
+  return `<div class="wl-factors">
+    <div class="fb-head"><span>量化因子评分</span><span class="fb-composite" style="color:${colorMap(factors.composite)}">综合 ${Math.round(factors.composite)}/100</span></div>
+    ${bars}
+    ${factors.summary ? `<div class="fb-summary">${esc(factors.summary)}</div>` : ''}
+  </div>`;
+}
+
 function renderWatchlist(results){
   const el=$('#wlResults');
   const judgmentColors={看好:'#16a34a', 中性:'#6b7280', 不看好:'#dc2626'};
@@ -579,6 +599,7 @@ function renderWatchlist(results){
         <span>RSI ${m.rsi14!=null?Math.round(m.rsi14):'—'}</span>
         <span>估值分位 ${m.price_percentile!=null?Math.round(m.price_percentile*100)+'%':'—'}</span>
       </div>
+      ${renderFactorBars(r.factors)}
       ${r.advice ? `<div class="wl-advice"><b>建议：</b>${esc(r.advice)}</div>` : ''}
       <div class="wl-risk-opp">
         ${r.risk ? `<span class="wl-risk">⚠️ 风险：${esc(r.risk)}</span>` : ''}

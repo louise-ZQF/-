@@ -220,6 +220,17 @@ main{max-width:1040px; margin:0 auto; padding:18px}
 .wl-risk-opp{display:flex; gap:12px; flex-wrap:wrap; font-size:12px; margin-top:6px}
 .wl-risk{color:var(--neg)} .wl-opp{color:var(--pos)}
 
+/* ---------- 因子评分条 ---------- */
+.wl-factors{background:#f9fafb; border-radius:10px; padding:10px 12px; margin:8px 0}
+.fb-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:12px; font-weight:700}
+.fb-composite{font-size:14px}
+.fb-row{display:flex; align-items:center; gap:8px; margin:3px 0; font-size:11px}
+.fb-label{width:56px; flex:0 0 auto; color:var(--muted); text-align:right}
+.fb-track{flex:1; height:6px; background:#e6e9ee; border-radius:3px; overflow:hidden}
+.fb-fill{height:100%; border-radius:3px; transition:width .3s}
+.fb-val{width:32px; flex:0 0 auto; font-weight:700; text-align:right}
+.fb-summary{font-size:11px; color:var(--muted); margin-top:6px; padding-top:6px; border-top:1px solid #e6e9ee}
+
 @media (max-width:760px){
   .thermo-grid{grid-template-columns:repeat(2,1fr)}
 }

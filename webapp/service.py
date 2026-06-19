@@ -233,16 +233,31 @@ def analyze_watchlist(codes: List[str]) -> List[dict]:
         m = compute_metrics(h, navpoints, quote, settings)
         fa = analyze_fund(h, navpoints, quote, [], [], settings)
 
-        # 构建买入分析 prompt
+        # 计算量化因子
+        from fund_analyzer.factors import compute_factor_scores, factors_to_dict
+        navs = [p.nav for p in navpoints if p.nav]
+        factor_scores = compute_factor_scores(navs) if navs else None
+        factor_dict = factors_to_dict(factor_scores) if factor_scores else None
+
+        # 构建买入分析 prompt（含量化因子）
+        factor_text = ""
+        if factor_scores:
+            factor_text = f"""量化因子评分:
+  动量({factor_scores.momentum:.0f}) 趋势质量({factor_scores.trend_quality:.0f}) 估值({factor_scores.value:.0f})
+  风险调整({factor_scores.risk_adjusted:.0f}) 波动状态({factor_scores.vol_regime:.0f}) 回撤恢复({factor_scores.drawdown_recovery:.0f})
+  综合: {factor_scores.composite:.0f}/100 → {factor_scores.summary}
+"""
+
         fund_text = f"""基金代码: {code}
 名称: {info.name}
 类型: {info.asset_class}
 最新净值: {m.last_nav}
 近1周: {(m.ret_1w or 0)*100:+.1f}%  近1月: {(m.ret_1m or 0)*100:+.1f}%  近3月: {(m.ret_3m or 0)*100:+.1f}%
 RSI(14): {m.rsi14:.0f}  估值分位: {(m.price_percentile or 0)*100:.0f}%  最大回撤: {(m.max_drawdown or 0)*100:.1f}%
-年化波动: {(m.vol_annual or 0)*100:.1f}%  夏普: {m.sharpe or 0:.2f}"""
+年化波动: {(m.vol_annual or 0)*100:.1f}%  夏普: {m.sharpe or 0:.2f}
+{factor_text}"""
 
-        prompt = f"""你是顶级基金分析师。判断这只基金现在是否值得买入。
+        prompt = f"""你是顶级量化基金分析师。结合技术指标和六因子量化评分，判断这只基金现在是否值得买入。
 
 {fund_text}
 
@@ -250,7 +265,7 @@ RSI(14): {m.rsi14:.0f}  估值分位: {(m.price_percentile or 0)*100:.0f}%  最�
 {market_summary}
 
 ## 请给出判断（简洁，3-4句）：
-1. 看好/中性/不看好 — 为什么？
+1. 看好/中性/不看好 — 为什么？（务必参考量化因子的综合得分和分项）
 2. 现在适合买入吗？如果适合，建议什么价位/策略？
 3. 最大的风险和最大的机会各一句话
 
@@ -261,7 +276,7 @@ RSI(14): {m.rsi14:.0f}  估值分位: {(m.price_percentile or 0)*100:.0f}%  最�
 风险: （最大风险）
 机会: （最大机会）"""
 
-        resp = call_deepseek(prompt, system="你是顶级基金分析师，回答简洁、具体、可执行。只输出结果，不解释。")
+        resp = call_deepseek(prompt, system="你是顶级量化基金分析师，擅长多因子模型。回答简洁、具体、可执行。只输出结果，不解释。")
         if not resp:
             results.append({
                 "code": code, "name": info.name, "asset_class": info.asset_class,
@@ -296,6 +311,7 @@ RSI(14): {m.rsi14:.0f}  估值分位: {(m.price_percentile or 0)*100:.0f}%  最�
             "advice": ai.get("建议", "—"),
             "risk": ai.get("风险", "—"),
             "opportunity": ai.get("机会", "—"),
+            "factors": factor_dict,
         })
 
     return results
