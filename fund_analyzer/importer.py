@@ -19,6 +19,12 @@ try:
 except ImportError:
     HAS_TESSERACT = False
 
+try:
+    import easyocr
+    HAS_EASYOCR = True
+except ImportError:
+    HAS_EASYOCR = False
+
 
 # ---------------------------------------------------------------------------
 # 基金代码 → 信息的自动推断
@@ -141,21 +147,44 @@ def parse_batch_text(text: str) -> List[Tuple[str, float]]:
 def ocr_funds_from_image(image_data: bytes, lang: str = "chi_sim+eng") -> List[Tuple[str, float]]:
     """从支付宝持仓截图 OCR 提取基金代码和金额。
 
-    系统需安装 tesseract-ocr：
-      brew install tesseract (macOS)
-      apt install tesseract-ocr tesseract-ocr-chi-sim (Linux)
-    Python 依赖：pip install pytesseract Pillow
+    优先用 tesseract（需系统安装），其次用 easyocr（纯 Python，首次运行会自动下载模型）。
     """
-    if not (HAS_PIL and HAS_TESSERACT):
-        raise RuntimeError(
-            "OCR 需要安装 pytesseract 和 Pillow：pip install pytesseract Pillow\n"
-            "以及系统级 tesseract-ocr"
-        )
+    if not HAS_PIL:
+        raise RuntimeError("OCR 需要安装 Pillow：pip install Pillow")
 
     img = Image.open(io.BytesIO(image_data))
-    text = pytesseract.image_to_string(img, lang=lang)
+    text = ""
 
+    # 优先 tesseract（快速）
+    if HAS_TESSERACT:
+        try:
+            text = pytesseract.image_to_string(img, lang=lang)
+        except Exception as e:
+            print(f"[importer] tesseract 失败: {e}，回退到 easyocr")
+
+    # 回退 easyocr（纯 Python，首次需下载模型 ~100MB）
+    if not text and HAS_EASYOCR:
+        try:
+            reader = easyocr.Reader(["ch_sim", "en"], gpu=False)
+            results_raw = reader.readtext(image_data, detail=0)
+            text = "\n".join(results_raw)
+        except Exception as e:
+            print(f"[importer] easyocr 失败: {e}")
+
+    if not text:
+        raise RuntimeError(
+            "OCR 不可用。请安装以下任一方案：\n"
+            "方案1（推荐本地）: pip install easyocr\n"
+            "方案2: brew install tesseract && pip install pytesseract"
+        )
+
+    return _extract_fund_pairs(text)
+
+
+def _extract_fund_pairs(text: str) -> List[Tuple[str, float]]:
+    """从 OCR 文本中提取基金代码和金额对。"""
     results = []
+    seen = set()
     lines = text.splitlines()
     for line in lines:
         # 支付宝截图格式：6位代码 附近有金额数字
@@ -163,11 +192,13 @@ def ocr_funds_from_image(image_data: bytes, lang: str = "chi_sim+eng") -> List[T
         if m:
             code = m.group(1)
             amount_str = m.group(2).replace(",", "")
+            if code in seen:
+                continue
             try:
                 amount = float(amount_str)
                 if 1 < amount < 100_000_000:  # 合理金额范围
                     results.append((code, amount))
+                    seen.add(code)
             except ValueError:
                 continue
-
     return results
