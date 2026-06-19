@@ -78,7 +78,7 @@ def build_live_json(holdings_path_override: Optional[str] = None) -> dict:
     # 自动保存每日快照
     tv = result["overview"].get("total_value") or 0
     tc = result["overview"].get("total_cost") or 0
-    invested = sum(float(h.get("current_value", 0) or 0) for h in holdings)
+    invested = sum(float(h.current_value or 0) for h in holdings)
     save_daily_snapshot(tv, tc, invested, len(holdings))
 
     return result

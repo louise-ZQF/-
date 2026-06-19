@@ -165,7 +165,7 @@ def _value_score(navs: Sequence[float]) -> Tuple[float, str]:
     return round(score, 1), note
 
 
-def _risk_adjusted_score(rets: Sequence[float]) -> Tuple[float, str]:
+def _risk_adjusted_score(rets: Sequence[float], navs: Sequence[float]) -> Tuple[float, str]:
     """风险调整收益：Sharpe + Sortino + Calmar。"""
     if len(rets) < 20:
         return 50.0, "数据不足"
@@ -173,7 +173,7 @@ def _risk_adjusted_score(rets: Sequence[float]) -> Tuple[float, str]:
     # 年化
     ann_ret = sum(rets) / len(rets) * 252
     ann_vol = statistics.stdev(rets) * math.sqrt(252) if len(rets) > 1 else 0.0
-    sharpe = (ann_ret - 0.02) / max(ann_vol, 0.001)  # rf=2%
+    sharpe = (ann_ret - 0.02) / max(ann_vol, 0.001)
 
     # Sortino: 下行标准差
     downs = [min(r, 0) ** 2 for r in rets]
@@ -293,7 +293,7 @@ def compute_factor_scores(navs: Sequence[float]) -> FactorScores:
     fs.momentum, n_mom = _momentum_score(navs)
     fs.trend_quality, n_trend = _trend_quality_score(navs)
     fs.value, n_val = _value_score(navs)
-    fs.risk_adjusted, n_ra = _risk_adjusted_score(rets)
+    fs.risk_adjusted, n_ra = _risk_adjusted_score(rets, navs)
     fs.vol_regime, n_vol = _vol_regime_score(rets)
     fs.drawdown_recovery, n_dd = _drawdown_recovery_score(navs)
 
