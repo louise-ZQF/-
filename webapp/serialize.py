@@ -42,17 +42,22 @@ def fund_to_dict(fa: FundAnalysis) -> dict:
     m = fa.metrics
     h = fa.holding
     e = fa.estimate
+    # 市值优先用 shares*nav，否则用用户填的 current_value
+    mv = fa.market_value or h.current_value or None
+    iv = fa.implied_value
     d = {
         "code": h.code,
         "name": h.name or h.code,
         "asset_class": h.asset_class.value,
         "is_dca": h.is_dca,
+        "current_value": h.current_value,
+        "dca_plan": {"frequency": h.dca_plan.frequency, "amount": h.dca_plan.amount} if h.dca_plan else None,
         "action": fa.action.value,
         "action_kind": _ACTION_KIND.get(fa.action, "hold"),
         "score": round(fa.score, 1),
         "rationale": fa.rationale,
-        "market_value": fa.market_value,
-        "implied_value": fa.implied_value,
+        "market_value": mv,
+        "implied_value": iv,
         "metrics": {
             "last_nav": m.last_nav,
             "holding_return": m.holding_return,
@@ -92,10 +97,10 @@ def fund_to_dict(fa: FundAnalysis) -> dict:
 def report_to_dict(rep: PortfolioReport, title: str, mode: str) -> dict:
     funds = [fund_to_dict(fa) for fa in rep.funds]
 
-    # 资产大类分布（按已公布市值）
+    # 资产大类分布（按市值，fallback 到 current_value）
     alloc = {}
     for fa in rep.funds:
-        mv = fa.market_value or 0.0
+        mv = fa.market_value or fa.holding.current_value or 0.0
         if mv:
             alloc[fa.holding.asset_class.value] = alloc.get(fa.holding.asset_class.value, 0.0) + mv
     total = sum(alloc.values()) or 1.0
