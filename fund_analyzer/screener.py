@@ -111,8 +111,10 @@ def _fetch_rank(http: HttpClient, fund_type: str = "all", sort_by: str = "1nzf",
         try:
             code = parts[0].strip()
             name = parts[1].strip()
-            ret_1y_str = parts[3] if len(parts) > 3 else "0"
-            ret_3y_str = parts[4] if len(parts) > 4 else "0"
+            # 字段: code,name,pinyin,date,nav,cum_nav,日涨幅,近1周,近1月,近3月,近6月,近1年,近2年,近3年,...
+            # 0    1    2      3    4   5        6      7     8     9     10    11     12     13
+            ret_1y_str = parts[10] if len(parts) > 10 else "0"
+            ret_3y_str = parts[12] if len(parts) > 12 else "0"
             ret_1y = float(ret_1y_str) / 100.0 if ret_1y_str else 0
             ret_3y = float(ret_3y_str) / 100.0 if ret_3y_str else 0
         except (ValueError, IndexError):
@@ -161,30 +163,28 @@ def _estimate_max_dd(navs: List[float]) -> float:
 
 QDII_US_KEYWORDS = [
     "纳斯达克", "纳指", "标普", "美股", "道琼斯", "费城半导体",
-    "全球科技", "全球成长", "新兴市场", "海外", "QDII",
+    "全球科技", "全球成长", "全球高端", "全球产业", "全球新",
+    "新兴市场", "海外", "QDII", "美国", "美元", "摩根",
+    "互联", "移动互联",
 ]
 
 
-def _is_us_qdii(name: str, fund_type: str) -> bool:
+def _is_us_qdii(name: str) -> bool:
     """判断是否为美股相关 QDII。"""
-    if fund_type == "qdii":
-        return True
-    name_lower = name.lower()
     for kw in QDII_US_KEYWORDS:
-        if kw.lower() in name_lower:
+        if kw in name:
             return True
     return False
 
 
-def _is_a_stock(name: str, fund_type: str) -> bool:
+def _is_a_stock(name: str) -> bool:
     """判断是否为 A 股基金。"""
     a_keywords = ["沪深300", "中证500", "上证50", "创业板", "科创", "A股",
-                  "红利", "消费", "医药", "新能源", "半导体"]
-    name_lower = name
+                  "红利", "消费", "医药", "新能源", "半导体", "中国"]
     for kw in a_keywords:
-        if kw.lower() in name_lower.lower():
+        if kw in name:
             return True
-    return fund_type in ("stock", "hybrid", "index") and not _is_us_qdii(name, fund_type)
+    return not _is_us_qdii(name)
 
 
 def screen_funds(http: HttpClient, em,
@@ -217,9 +217,9 @@ def screen_funds(http: HttpClient, em,
     results = []
     for c in unique:
         # 类型判断
-        if category == "us_qdii" and not _is_us_qdii(c["name"], ""):
+        if category == "us_qdii" and not _is_us_qdii(c["name"]):
             continue
-        elif category == "a_stock" and not _is_a_stock(c["name"], ""):
+        elif category == "a_stock" and not _is_a_stock(c["name"]):
             continue
 
         # 获取历史净值计算夏普和回撤
@@ -251,16 +251,16 @@ def screen_funds(http: HttpClient, em,
 
         # 按类别过滤最低标准
         if category == "us_qdii":
-            if c["ret_1y"] < 0.05:  # QDII 近1年至少 5%
+            if c["ret_1y"] < 0.0:  # 只筛掉负收益的
                 continue
         elif category == "a_stock":
-            if sharpe < 0.3:  # A 股至少夏普 > 0.3
+            if sharpe < 0.2:  # A 股至少夏普 > 0.2
                 continue
 
         results.append(ScreenedFund(
             code=c["code"],
             name=c["name"],
-            fund_type="QDII美股" if _is_us_qdii(c["name"], "") else "A股",
+            fund_type="QDII美股" if _is_us_qdii(c["name"]) else "A股",
             ret_1y=c["ret_1y"],
             ret_3y=c["ret_3y"],
             sharpe=round(sharpe, 2),
