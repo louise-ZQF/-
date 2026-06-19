@@ -102,14 +102,17 @@ def compute_xirr(transactions: List[Transaction],
         npv = _xirr_npv(guess, flows)
         if abs(npv) < 0.01:
             break
-        # 数值导数
         deriv = (_xirr_npv(guess + 0.0001, flows) - npv) / 0.0001
         if abs(deriv) < 1e-9:
             break
         guess = guess - npv / deriv
-        guess = max(-0.99, min(10.0, guess))  # 限幅
+        guess = max(-0.99, min(10.0, guess))
 
-    result.xirr = guess
+    # 如果数据太少或 IRR 极端，用简单年化收益
+    if years < 0.08 or abs(guess) > 5.0:
+        result.xirr = result.annualized_return
+    else:
+        result.xirr = guess
     return result
 
 
