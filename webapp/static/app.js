@@ -489,6 +489,8 @@ async function runAiAnalysis(){
     // 逐只标签 + 覆盖基金卡片的操作建议
     const tagsEl=$('#aiFundTags');
     if(d.funds && tagsEl){
+	      const nameMap={};
+	      (state.data?.funds||[]).forEach(f=>{ nameMap[f.code]=f.name; });
       const bullish=[], bearish=[], neutral=[];
       const tags=Object.entries(d.funds).map(([code,s])=>{
         const cls=s.sentiment==='看好'||s.sentiment==='强烈看好'?'bullish':(s.sentiment==='谨慎'||s.sentiment==='规避'?'bearish':'neutral');
@@ -496,7 +498,7 @@ async function runAiAnalysis(){
         if(s.sentiment==='看好'||s.sentiment==='强烈看好') bullish.push({code,s});
         else if(s.sentiment==='谨慎'||s.sentiment==='规避') bearish.push({code,s});
         else neutral.push({code,s});
-        return `<span class="ai-tag ${cls}">${icon} ${code}: ${s.sentiment} — ${esc(s.reason||'')} — ${esc(s.suggestion||'')}</span>`;
+        return `<span class="ai-tag ${cls}">${icon} ${esc(nameMap[code]||code)}: ${s.sentiment} — ${esc(s.reason||'')} — ${esc(s.suggestion||'')}</span>`;
       }).join('');
       tagsEl.innerHTML=tags;
 
@@ -537,7 +539,7 @@ async function runAiAnalysis(){
           const div=document.createElement('div'); div.className='hl';
           const borderColor=x.kind==='bullish'?'#16a34a':(x.kind==='bearish'?'#dc2626':'#6b7280');
           div.style.borderLeftColor=borderColor;
-          div.innerHTML=`<div><b>${esc(x.code)}</b> → <b style="color:${borderColor}">${esc(x.s.sentiment)}</b>
+          div.innerHTML=`<div><b>${esc(nameMap[x.code]||x.code)}</b> → <b style="color:${borderColor}">${esc(x.s.sentiment)}</b>
             <div class="hl-reason">${esc(x.s.reason||'')} — ${esc(x.s.suggestion||'')}</div></div>`;
           hl.appendChild(div);
         });
