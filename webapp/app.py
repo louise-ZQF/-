@@ -95,4 +95,63 @@ def create_app() -> Flask:
                         "<h3>配置成功 ✅</h3><p>每日报告可正常发送。</p>", "配置成功")
         return jsonify({"ok": ok})
 
+    # ---- 导入 ----
+
+    @app.post("/api/import/ocr")
+    def import_ocr():
+        if "image" not in request.files:
+            return jsonify({"error": "请上传截图文件"}), 400
+        file = request.files["image"]
+        try:
+            data = file.read()
+            results = service.ocr_import(data)
+            return jsonify({"ok": True, "funds": results, "count": len(results)})
+        except RuntimeError as e:
+            return jsonify({"error": str(e) + "（请确保已安装 tesseract-ocr 和 pytesseract）"}), 500
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": f"OCR 识别失败: {e}"}), 500
+
+    @app.post("/api/import/batch")
+    def import_batch():
+        body = request.get_json(silent=True) or {}
+        text = body.get("text", "")
+        if not text.strip():
+            return jsonify({"error": "请提供批量导入文本（每行: 代码 金额）"}), 400
+        from fund_analyzer.importer import parse_batch_text
+        pairs = parse_batch_text(text)
+        if not pairs:
+            return jsonify({"error": "未识别到有效的基金代码和金额，格式：代码 金额（空格分隔）"}), 400
+        codes = [p[0] for p in pairs]
+        amount_map = {p[0]: p[1] for p in pairs}
+        funds = service.batch_auto_fill(codes)
+        for f in funds:
+            f["current_value"] = amount_map.get(f["code"], 0)
+        return jsonify({"ok": True, "funds": funds, "count": len(funds)})
+
+    @app.get("/api/fund/search")
+    def fund_search():
+        code = request.args.get("code", "").strip()
+        if not code or len(code) != 6:
+            return jsonify({"error": "请输入6位基金代码"}), 400
+        info = service.auto_fill_fund(code)
+        if not info:
+            return jsonify({"error": f"未找到基金 {code}，请确认代码正确"}), 404
+        return jsonify({"fund": info})
+
+    # ---- AI 分析 ----
+
+    @app.get("/api/ai/analyze")
+    def ai_analyze():
+        """对已保存的持仓运行 AI 分析。需要 DEEPSEEK_API_KEY。"""
+        try:
+            holdings = service.read_holdings_raw()
+            if not holdings:
+                return jsonify({"error": "请先保存持仓"}), 400
+            result = service.run_ai_analysis(holdings)
+            return jsonify(result)
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
     return app
