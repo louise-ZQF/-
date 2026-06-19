@@ -40,6 +40,13 @@ function init(){
   $('#loadExampleBtn').addEventListener('click', loadExample);
   $('#modalClose').addEventListener('click', closeModal);
   $('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeModal(); });
+  initImport();
+  // Import buttons
+  const bib=$('#batchImportBtn'); if(bib) bib.addEventListener('click', doBatchImport);
+  const oib=$('#ocrImportBtn'); if(oib) oib.addEventListener('click', doOcrImport);
+  const csb=$('#codeSearchBtn'); if(csb) csb.addEventListener('click', doCodeSearch);
+  // AI analysis button
+  const aab=$('#aiAnalyzeBtn'); if(aab) aab.addEventListener('click', runAiAnalysis);
   loadReport();
 }
 
@@ -273,19 +280,22 @@ function renderRows(){
   const body=$('#holdingsBody'); body.innerHTML='';
   state.holdings.forEach((h,i)=>{
     const tk=h.tracking||{};
+    const dp=h.dca_plan||{};
+    const freqOpts={'daily':'每天','weekly':'每周','monthly':'每月'};
     const tr=document.createElement('tr'); tr.dataset.i=i;
     const opts=ASSET_OPTIONS.map(o=>`<option value="${o}" ${h.asset_class===o?'selected':''}>${ASSET_LABELS[o]}</option>`).join('');
     tr.innerHTML = `
       <td><input class="w-code" data-k="code" value="${esc(h.code||'')}" placeholder="270042"></td>
       <td><input data-k="name" value="${esc(h.name||'')}" placeholder="自动获取"></td>
       <td><select data-k="asset_class">${opts}</select></td>
-      <td><input class="w-num" data-k="shares" type="number" step="any" value="${h.shares??''}"></td>
+      <td><input class="w-num" data-k="current_value" type="number" step="any" value="${h.current_value||''}" placeholder="50000"></td>
       <td><input class="w-num" data-k="cost_nav" type="number" step="any" value="${h.cost_nav??''}"></td>
       <td><input class="w-num" data-k="target_weight" type="number" step="any" value="${h.target_weight??''}" placeholder="0~1"></td>
       <td style="text-align:center"><input data-k="is_dca" type="checkbox" ${h.is_dca?'checked':''}></td>
+      <td><select data-k="dca_freq">${['daily','weekly','monthly'].map(f=>`<option value="${f}" ${(dp.frequency||'monthly')===f?'selected':''}>${freqOpts[f]}</option>`).join('')}</select></td>
+      <td><input class="w-num" data-k="dca_amount" type="number" step="any" value="${dp.amount||''}" placeholder="1000"></td>
       <td><input class="w-idx" data-tk="index" value="${esc(tk.index||'')}" placeholder="^NDX"></td>
       <td><input class="w-lag" data-tk="lag_days" type="number" value="${tk.lag_days??1}"></td>
-      <td style="text-align:center"><input data-tk="currency_hedged" type="checkbox" ${tk.currency_hedged?'checked':''}></td>
       <td><input class="w-num" data-k="annual_fee" type="number" step="any" value="${h.annual_fee??''}" placeholder="0.008"></td>
       <td><button class="row-del" title="删除">×</button></td>`;
     tr.querySelector('.row-del').addEventListener('click', ()=>{ state.holdings.splice(i,1); if(!state.holdings.length) state.holdings=[{}]; renderRows(); });
@@ -302,6 +312,15 @@ function collectRows(){
     $$('[data-tk]',tr).forEach(inp=>{
       o.tracking[inp.dataset.tk] = inp.type==='checkbox'?inp.checked:inp.value;
     });
+    // Collect DCA plan
+    const dcaFreq = tr.querySelector('[data-k="dca_freq"]')?.value || 'monthly';
+    const dcaAmount = parseFloat(tr.querySelector('[data-k="dca_amount"]')?.value) || 0;
+    if (dcaAmount > 0) {
+      o.dca_plan = {frequency: dcaFreq, amount: dcaAmount, enabled: true};
+    }
+    // Remove raw dca fields from top-level
+    delete o.dca_freq;
+    delete o.dca_amount;
     return o;
   }).filter(o=>String(o.code||'').trim());
 }
@@ -319,5 +338,132 @@ async function saveHoldings(){
   finally{ $('#saveBtn').disabled=false; }
 }
 function setSaveMsg(msg, cls){ const el=$('#saveMsg'); el.textContent=msg; el.className='save-msg '+(cls||''); }
+
+// ---------- 导入面板切换 ----------
+function initImport(){
+  $$('.imp-tab').forEach(b=>b.addEventListener('click', ()=>{
+    const pane=b.dataset.imp;
+    $$('.imp-tab').forEach(t=>t.classList.toggle('active', t===b));
+    $$('.import-pane').forEach(p=>p.classList.toggle('active', p.id==='import-'+pane));
+  }));
+}
+
+// ---------- 批量导入 ----------
+function setImportStatus(msg,cls){ const el=$('#importStatus'); if(el){el.textContent=msg; el.className='save-msg '+(cls||'');} }
+
+async function doBatchImport(){
+  const text=$('#batchText').value.trim();
+  if(!text){ setImportStatus('请粘贴持仓数据','neg'); return; }
+  setImportStatus('识别中…','');
+  try{
+    const r=await fetch('/api/import/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    const d=await r.json();
+    if(d.error){ setImportStatus(d.error,'neg'); return; }
+    d.funds.forEach(f=>{
+      const exist=state.holdings.findIndex(h=>h.code===f.code);
+      if(exist>=0) state.holdings[exist]={...state.holdings[exist],...f};
+      else state.holdings.push(f);
+    });
+    renderRows();
+    setImportStatus(`已识别并补全 ${d.count} 只基金 ✅`,'pos');
+  }catch(e){ setImportStatus('导入失败: '+e.message,'neg'); }
+}
+
+// ---------- OCR 导入 ----------
+async function doOcrImport(){
+  const file=$('#ocrFile').files[0];
+  if(!file){ setImportStatus('请先选择截图文件','neg'); return; }
+  setImportStatus('OCR 识别中…','');
+  const fd=new FormData(); fd.append('image',file);
+  try{
+    const r=await fetch('/api/import/ocr',{method:'POST',body:fd});
+    const d=await r.json();
+    if(d.error){ setImportStatus(d.error,'neg'); return; }
+    d.funds.forEach(f=>{
+      const exist=state.holdings.findIndex(h=>h.code===f.code);
+      if(exist>=0) state.holdings[exist]={...state.holdings[exist],...f};
+      else state.holdings.push(f);
+    });
+    renderRows();
+    setImportStatus(`OCR 识别 ${d.count} 只基金 ✅`,'pos');
+  }catch(e){ setImportStatus('OCR 失败: '+e.message,'neg'); }
+}
+
+// ---------- 代码搜索 ----------
+async function doCodeSearch(){
+  const code=$('#codeSearchInput').value.trim();
+  if(code.length!==6){ setImportStatus('请输入6位基金代码','neg'); return; }
+  setImportStatus('搜索中…','');
+  try{
+    const r=await fetch('/api/fund/search?code='+code);
+    const d=await r.json();
+    if(d.error){ setImportStatus(d.error,'neg'); return; }
+    const fund=d.fund;
+    fund.current_value=parseFloat($('#codeSearchAmount').value)||fund.current_value||0;
+    const exist=state.holdings.findIndex(h=>h.code===fund.code);
+    if(exist>=0) state.holdings[exist]={...state.holdings[exist],...fund};
+    else state.holdings.push(fund);
+    renderRows();
+    setImportStatus(`已添加 ${fund.name} ✅`,'pos');
+    $('#codeSearchInput').value=''; $('#codeSearchAmount').value='';
+  }catch(e){ setImportStatus('搜索失败: '+e.message,'neg'); }
+}
+
+// ---------- AI 分析 ----------
+async function runAiAnalysis(){
+  const panel=$('#aiPanel'); if(panel) panel.classList.remove('hidden');
+  const portfolioEl=$('#aiPortfolio'); if(portfolioEl) portfolioEl.innerHTML='<div class="loading">AI 分析中…</div>';
+  try{
+    const r=await fetch('/api/ai/analyze');
+    const d=await r.json();
+    if(d.error){
+      if(portfolioEl) portfolioEl.innerHTML='<span class="neg">'+esc(d.error)+'</span>';
+      return;
+    }
+    // 组合分析
+    let html='';
+    if(d.portfolio_analysis) html+=`<div><b>📊 组合分析</b><br>${esc(d.portfolio_analysis)}</div>`;
+    if(d.sector_bias) html+=`<div style="margin-top:8px"><b>🏭 行业偏向</b><br>${esc(d.sector_bias)}</div>`;
+    if(d.macro_note) html+=`<div style="margin-top:8px"><b>🌍 宏观判断</b><br>${esc(d.macro_note)}</div>`;
+    if(portfolioEl) portfolioEl.innerHTML=html||'<div class="empty">暂无</div>';
+
+    // 逐只标签
+    const tagsEl=$('#aiFundTags');
+    if(d.funds && tagsEl){
+      const tags=Object.entries(d.funds).map(([code,s])=>{
+        const cls=s.sentiment==='看好'?'bullish':(s.sentiment==='谨慎'?'bearish':'neutral');
+        const icon=s.sentiment==='看好'?'🟢':(s.sentiment==='谨慎'?'🔴':'🟡');
+        return `<span class="ai-tag ${cls}">${icon} ${code}: ${s.sentiment} — ${esc(s.reason||'')} — ${esc(s.suggestion||'')}</span>`;
+      }).join('');
+      tagsEl.innerHTML=tags;
+      // Sync to fund cards
+      Object.entries(d.funds).forEach(([code,s])=>{
+        $$('.fund').forEach(card=>{
+          const codeEl=card.querySelector('.fund-code');
+          if(codeEl && codeEl.textContent.includes(code)){
+            const cls=s.sentiment==='看好'?'ai-bullish':(s.sentiment==='谨慎'?'ai-bearish':'ai-neutral');
+            const icon=s.sentiment==='看好'?'🟢':(s.sentiment==='谨慎'?'🔴':'🟡');
+            const existBadge=card.querySelector('.ai-badge');
+            if(existBadge) existBadge.remove();
+            const head=card.querySelector('.fund-head');
+            const badge=document.createElement('span');
+            badge.className='ai-badge '+cls;
+            badge.textContent=icon+' '+s.sentiment;
+            head.appendChild(badge);
+          }
+        });
+      });
+    }
+
+    // 定投调整建议
+    const dcaEl=$('#aiDcaTips');
+    if(d.dca_adjustments && Object.keys(d.dca_adjustments).length && dcaEl){
+      const tips=Object.entries(d.dca_adjustments).map(([code,txt])=>`<div>📌 ${code}: ${esc(txt)}</div>`).join('');
+      dcaEl.innerHTML=`<b>💡 定投调整建议</b>${tips}`;
+    }else if(dcaEl){ dcaEl.innerHTML=''; }
+  }catch(e){
+    if(portfolioEl) portfolioEl.innerHTML='<span class="neg">AI 分析失败: '+esc(e.message)+'</span>';
+  }
+}
 
 document.addEventListener('DOMContentLoaded', init);
