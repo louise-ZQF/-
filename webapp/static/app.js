@@ -45,6 +45,8 @@ function init(){
   const bib=$('#batchImportBtn'); if(bib) bib.addEventListener('click', doBatchImport);
   const oib=$('#ocrImportBtn'); if(oib) oib.addEventListener('click', doOcrImport);
   const csb=$('#codeSearchBtn'); if(csb) csb.addEventListener('click', doCodeSearch);
+  // One-click daily DCA
+  const sad=$('#setAllDailyBtn'); if(sad) sad.addEventListener('click', setAllDaily);
   // AI analysis button
   const aab=$('#aiAnalyzeBtn'); if(aab) aab.addEventListener('click', runAiAnalysis);
   loadReport();
@@ -259,7 +261,7 @@ function openModal(f){
 }
 function closeModal(){ $('#modal').classList.add('hidden'); }
 
-// ---------- 持仓管理 ----------
+// ---------- 持仓管理（极简：代码 + 金额 + 每日定投）----------
 async function loadHoldings(){
   try{
     const r=await fetch('/api/holdings');
@@ -279,24 +281,13 @@ async function loadExample(){
 function renderRows(){
   const body=$('#holdingsBody'); body.innerHTML='';
   state.holdings.forEach((h,i)=>{
-    const tk=h.tracking||{};
     const dp=h.dca_plan||{};
-    const freqOpts={'daily':'每天','weekly':'每周','monthly':'每月'};
     const tr=document.createElement('tr'); tr.dataset.i=i;
-    const opts=ASSET_OPTIONS.map(o=>`<option value="${o}" ${h.asset_class===o?'selected':''}>${ASSET_LABELS[o]}</option>`).join('');
     tr.innerHTML = `
       <td><input class="w-code" data-k="code" value="${esc(h.code||'')}" placeholder="270042"></td>
-      <td><input data-k="name" value="${esc(h.name||'')}" placeholder="自动获取"></td>
-      <td><select data-k="asset_class">${opts}</select></td>
+      <td><span class="auto-name">${esc(h.name||'（保存后自动获取）')}</span></td>
       <td><input class="w-num" data-k="current_value" type="number" step="any" value="${h.current_value||''}" placeholder="50000"></td>
-      <td><input class="w-num" data-k="cost_nav" type="number" step="any" value="${h.cost_nav??''}"></td>
-      <td><input class="w-num" data-k="target_weight" type="number" step="any" value="${h.target_weight??''}" placeholder="0~1"></td>
-      <td style="text-align:center"><input data-k="is_dca" type="checkbox" ${h.is_dca?'checked':''}></td>
-      <td><select data-k="dca_freq">${['daily','weekly','monthly'].map(f=>`<option value="${f}" ${(dp.frequency||'monthly')===f?'selected':''}>${freqOpts[f]}</option>`).join('')}</select></td>
-      <td><input class="w-num" data-k="dca_amount" type="number" step="any" value="${dp.amount||''}" placeholder="1000"></td>
-      <td><input class="w-idx" data-tk="index" value="${esc(tk.index||'')}" placeholder="^NDX"></td>
-      <td><input class="w-lag" data-tk="lag_days" type="number" value="${tk.lag_days??1}"></td>
-      <td><input class="w-num" data-k="annual_fee" type="number" step="any" value="${h.annual_fee??''}" placeholder="0.008"></td>
+      <td><input class="w-num" data-k="dca_amount" type="number" step="any" value="${dp.amount||''}" placeholder="100"></td>
       <td><button class="row-del" title="删除">×</button></td>`;
     tr.querySelector('.row-del').addEventListener('click', ()=>{ state.holdings.splice(i,1); if(!state.holdings.length) state.holdings=[{}]; renderRows(); });
     body.appendChild(tr);
@@ -305,24 +296,21 @@ function renderRows(){
 
 function collectRows(){
   return $$('#holdingsBody tr').map(tr=>{
-    const o={tracking:{}};
+    const o={};
     $$('[data-k]',tr).forEach(inp=>{
       o[inp.dataset.k] = inp.type==='checkbox'?inp.checked:inp.value;
     });
-    $$('[data-tk]',tr).forEach(inp=>{
-      o.tracking[inp.dataset.tk] = inp.type==='checkbox'?inp.checked:inp.value;
-    });
-    // Collect DCA plan
-    const dcaFreq = tr.querySelector('[data-k="dca_freq"]')?.value || 'monthly';
-    const dcaAmount = parseFloat(tr.querySelector('[data-k="dca_amount"]')?.value) || 0;
-    if (dcaAmount > 0) {
-      o.dca_plan = {frequency: dcaFreq, amount: dcaAmount, enabled: true};
+    const code = String(o.code||'').trim();
+    if(!code) return null;
+    // 自动补全：所有字段都自动填，用户不用管
+    o.is_dca = true;  // 默认开启定投
+    const dcaAmount = parseFloat(o.dca_amount) || 0;
+    if(dcaAmount > 0){
+      o.dca_plan = {frequency: 'daily', amount: dcaAmount, enabled: true};
     }
-    // Remove raw dca fields from top-level
-    delete o.dca_freq;
     delete o.dca_amount;
     return o;
-  }).filter(o=>String(o.code||'').trim());
+  }).filter(Boolean);
 }
 
 async function saveHoldings(){
@@ -332,12 +320,29 @@ async function saveHoldings(){
   try{
     const r=await fetch('/api/holdings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings})});
     const d=await r.json();
-    if(d.ok){ setSaveMsg(`已保存 ${d.saved} 只基金 ✅　切到上方「我的持仓」即可查看分析。`,'pos'); }
+    if(d.ok){ setSaveMsg(`已保存 ${d.saved} 只基金 ✅　切到「仪表盘」→「我的持仓」查看分析。`,'pos'); }
     else setSaveMsg('保存失败：'+(d.error||'未知错误'),'neg');
   }catch(e){ setSaveMsg('保存失败：'+e.message,'neg'); }
   finally{ $('#saveBtn').disabled=false; }
 }
 function setSaveMsg(msg, cls){ const el=$('#saveMsg'); el.textContent=msg; el.className='save-msg '+(cls||''); }
+
+// ---------- 一键全部每日定投 ----------
+function setAllDaily(){
+  if(!state.holdings.length){ setSaveMsg('请先添加基金','neg'); return; }
+  const amount=prompt('设置所有基金的每日定投金额（元）：','100');
+  if(amount===null) return;
+  const amt=parseFloat(amount)||0;
+  state.holdings.forEach(h=>{
+    if(!h.dca_plan) h.dca_plan={};
+    h.dca_plan.frequency='daily';
+    h.dca_plan.amount=amt;
+    h.dca_plan.enabled=true;
+    h.is_dca=true;
+  });
+  renderRows();
+  setSaveMsg(`已设置全部基金每日定投 ¥${amt} ⚡`,'pos');
+}
 
 // ---------- 导入面板切换 ----------
 function initImport(){
@@ -359,13 +364,29 @@ async function doBatchImport(){
     const r=await fetch('/api/import/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
     const d=await r.json();
     if(d.error){ setImportStatus(d.error,'neg'); return; }
+    // 从批量文本中提取每日定投金额（第三列）
+    const lines=text.split('\n').filter(l=>l.trim());
+    lines.forEach(line=>{
+      const parts=line.trim().split(/\s+/);
+      if(parts.length>=3){
+        const code=parts[0];
+        const dcaAmt=parseFloat(parts[2])||0;
+        if(dcaAmt>0){
+          const fund=d.funds.find(f=>f.code===code);
+          if(fund){
+            fund.dca_plan={frequency:'daily', amount:dcaAmt, enabled:true};
+            fund.is_dca=true;
+          }
+        }
+      }
+    });
     d.funds.forEach(f=>{
       const exist=state.holdings.findIndex(h=>h.code===f.code);
       if(exist>=0) state.holdings[exist]={...state.holdings[exist],...f};
       else state.holdings.push(f);
     });
     renderRows();
-    setImportStatus(`已识别并补全 ${d.count} 只基金 ✅`,'pos');
+    setImportStatus(`已识别并补全 ${d.count} 只基金 ✅（每日定投已自动设置）`,'pos');
   }catch(e){ setImportStatus('导入失败: '+e.message,'neg'); }
 }
 
@@ -400,12 +421,18 @@ async function doCodeSearch(){
     if(d.error){ setImportStatus(d.error,'neg'); return; }
     const fund=d.fund;
     fund.current_value=parseFloat($('#codeSearchAmount').value)||fund.current_value||0;
+    fund.is_dca=true;
+    const dcaAmt=parseFloat($('#codeSearchDca')?.value)||0;
+    if(dcaAmt>0){
+      fund.dca_plan={frequency:'daily', amount:dcaAmt, enabled:true};
+    }
     const exist=state.holdings.findIndex(h=>h.code===fund.code);
     if(exist>=0) state.holdings[exist]={...state.holdings[exist],...fund};
     else state.holdings.push(fund);
     renderRows();
-    setImportStatus(`已添加 ${fund.name} ✅`,'pos');
+    setImportStatus(`已添加 ${fund.name} ✅（类型、跟踪指数等已自动补全）`,'pos');
     $('#codeSearchInput').value=''; $('#codeSearchAmount').value='';
+    const dcaEl=$('#codeSearchDca'); if(dcaEl) dcaEl.value='';
   }catch(e){ setImportStatus('搜索失败: '+e.message,'neg'); }
 }
 

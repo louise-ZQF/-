@@ -97,12 +97,39 @@ def read_example_holdings() -> List[dict]:
 
 
 def _clean_holding(d: dict) -> dict:
-    """规整前端提交的单条持仓，去掉空值、保证类型。"""
+    """规整前端提交的单条持仓，去掉空值、自动补全缺失字段。"""
     code = str(d.get("code", "")).strip()
     out: dict = {"code": code}
-    if d.get("name"):
+
+    # 有 name 就用，否则自动补全
+    if d.get("name") and str(d.get("name")).strip():
         out["name"] = str(d["name"]).strip()
-    out["asset_class"] = d.get("asset_class") or "other"
+
+    # 自动补全：如果用户只填了代码+金额(+定投)，帮他把剩余字段补上
+    has_tracking = bool((d.get("tracking") or {}).get("index"))
+    has_asset = bool(d.get("asset_class") and d.get("asset_class") != "other")
+    need_autofill = not (d.get("name") and has_asset and has_tracking)
+
+    if need_autofill:
+        info = auto_fill_fund(code)
+        if info:
+            if not d.get("name"):
+                out["name"] = info["name"]
+            out["asset_class"] = info["asset_class"]
+            out["annual_fee"] = info["annual_fee"]
+            tk = info.get("tracking") or {}
+            if tk.get("index"):
+                out["tracking"] = {
+                    "index": tk["index"],
+                    "lag_days": tk.get("lag_days", 1),
+                    "currency_hedged": tk.get("currency_hedged", False),
+                    "beta": "auto",
+                }
+        else:
+            out["asset_class"] = d.get("asset_class") or "other"
+    else:
+        out["asset_class"] = d.get("asset_class") or "other"
+
     for k in ("shares", "cost_nav", "annual_fee"):
         v = d.get(k)
         if v not in (None, "", 0, "0"):
@@ -110,6 +137,9 @@ def _clean_holding(d: dict) -> dict:
                 out[k] = float(v)
             except (TypeError, ValueError):
                 pass
+    if "annual_fee" not in out and d.get("annual_fee"):
+        out["annual_fee"] = float(d.get("annual_fee", 0) or 0)
+
     tw = d.get("target_weight")
     if tw not in (None, ""):
         try:
@@ -117,14 +147,35 @@ def _clean_holding(d: dict) -> dict:
         except (TypeError, ValueError):
             pass
     out["is_dca"] = bool(d.get("is_dca", False))
-    tk = d.get("tracking") or {}
-    index = (tk.get("index") or "").strip()
-    if index:
-        tracking = {"index": index, "lag_days": int(tk.get("lag_days", 1) or 1),
-                    "currency_hedged": bool(tk.get("currency_hedged", False))}
-        beta = tk.get("beta", "auto")
-        tracking["beta"] = beta if beta in (None, "", "auto") else float(beta)
-        out["tracking"] = tracking
+
+    # current_value
+    cv = d.get("current_value")
+    if cv not in (None, "", 0, "0"):
+        try:
+            out["current_value"] = float(cv)
+        except (TypeError, ValueError):
+            pass
+
+    # dca_plan
+    dp = d.get("dca_plan") or {}
+    if dp and dp.get("amount"):
+        out["dca_plan"] = {
+            "frequency": dp.get("frequency", "daily"),
+            "amount": float(dp["amount"]),
+            "enabled": bool(dp.get("enabled", True)),
+        }
+
+    # tracking（已有则保留）
+    if not need_autofill:
+        tk = d.get("tracking") or {}
+        index = (tk.get("index") or "").strip()
+        if index:
+            tracking = {"index": index, "lag_days": int(tk.get("lag_days", 1) or 1),
+                        "currency_hedged": bool(tk.get("currency_hedged", False))}
+            beta = tk.get("beta", "auto")
+            tracking["beta"] = beta if beta in (None, "", "auto") else float(beta)
+            out["tracking"] = tracking
+
     if d.get("note"):
         out["note"] = str(d["note"]).strip()
     return out

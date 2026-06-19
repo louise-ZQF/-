@@ -42,9 +42,10 @@ def test_infer_tracking_none():
 
 
 def test_parse_code_amount_line():
-    assert parse_code_amount_line("270042 50000") == ("270042", 50000.0)
-    assert parse_code_amount_line("270042  50000.5") == ("270042", 50000.5)
-    assert parse_code_amount_line("270042\t30000") == ("270042", 30000.0)
+    assert parse_code_amount_line("270042 50000") == ("270042", 50000.0, 0.0)
+    assert parse_code_amount_line("270042  50000.5") == ("270042", 50000.5, 0.0)
+    assert parse_code_amount_line("270042\t30000") == ("270042", 30000.0, 0.0)
+    assert parse_code_amount_line("270042 50000 100") == ("270042", 50000.0, 100.0)
 
 
 def test_parse_code_amount_line_invalid():
@@ -57,7 +58,14 @@ def test_parse_batch_text():
     text = "270042 50000\n050025 30000\n110020 20000"
     result = parse_batch_text(text)
     assert len(result) == 3
-    assert result[1] == ("050025", 30000.0)
+    assert result[1] == ("050025", 30000.0, 0.0)
+
+
+def test_parse_batch_text_with_dca():
+    text = "270042 50000 100\n050025 30000 50"
+    result = parse_batch_text(text)
+    assert len(result) == 2
+    assert result[0] == ("270042", 50000.0, 100.0)
 
 
 def test_parse_batch_text_with_blanks():
