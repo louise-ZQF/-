@@ -63,6 +63,46 @@ def classify_fund(code: str, name: str) -> FundClass:
                     is_qdii=(region == "us" or region == "hk" or region == "global"),
                 )
 
+    # 主动基金基准覆盖（在默认 fallback 之前检查）
+    ACTIVE_BENCHMARK_MAP = [
+        # Tech/Semiconductor
+        (["科技", "半导体", "芯片", "人工智能", "AI"], "global", "^NDX"),
+        (["高端制造", "先进制造", "智能制造"], "global", "^GSPC"),
+        # Healthcare
+        (["医药", "医疗", "健康", "生物"], "cn", "000300"),
+        (["医药", "医疗", "健康"], "global", "^GSPC"),
+        # Consumer
+        (["消费", "食品", "饮料", "白酒"], "cn", "000300"),
+        # Financial
+        (["金融", "银行", "券商", "保险"], "cn", "000300"),
+        # New energy
+        (["新能源", "光伏", "锂电", "风电", "储能"], "cn", "000300"),
+        # Real estate / infra
+        (["地产", "基建", "基础设施"], "cn", "000300"),
+        # Emerging markets
+        (["新兴市场", "新兴"], "global", "^GSPC"),
+        # Hong Kong
+        (["港股", "香港", "恒生"], "hk", "^HSI"),
+        (["恒生科技", "港股科技"], "hk", "^HSTECH"),
+        # Global / multi-asset
+        (["全球", "环球", "海外", "世界"], "global", "^GSPC"),
+        # Bond
+        (["债券", "纯债", "国债"], "cn", "CBA001"),
+        # Gold / commodity
+        (["黄金", "贵金属"], "us", "GC=F"),
+        (["原油", "油气", "能源"], "us", "^GSPC"),
+    ]
+
+    for keywords, region, bm in ACTIVE_BENCHMARK_MAP:
+        for kw in keywords:
+            if kw in name:
+                return FundClass(
+                    code=code, name=name,
+                    fund_type="active_equity", asset_region=region,
+                    benchmark_code=bm,
+                    is_qdii=(region in ("us", "hk", "global")),
+                )
+
     # 默认：主动权益基金
     is_qdii = any(kw in name_lower for kw in ["qdii", "美元", "海外", "全球"])
     region = "global" if is_qdii else "cn"

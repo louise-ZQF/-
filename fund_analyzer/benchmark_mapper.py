@@ -55,6 +55,61 @@ def get_fx_code(benchmark_code: str) -> Optional[str]:
     return _FX_MAP.get(currency)
 
 
+def combine_index_and_fx(index_rets: List[Tuple[date, float]],
+                         fx_rets: List[Tuple[date, float]]) -> List[Tuple[date, float]]:
+    """合并指数收益和汇率收益 → 人民币计价总收益。
+
+    R_rmb = (1 + R_index) * (1 + R_fx) - 1
+    """
+    fx_dict = {d: r for d, r in fx_rets}
+    combined = []
+    for d, idx_r in index_rets:
+        fx_r = fx_dict.get(d, 0.0)
+        total_r = (1 + idx_r) * (1 + fx_r) - 1
+        combined.append((d, total_r))
+    return combined
+
+
+def estimate_best_lag(fund_rets: List[Tuple[date, float]],
+                      bench_rets: List[Tuple[date, float]]) -> int:
+    """测试 lag 0-4，选择 R² 最高、跟踪误差最低的。"""
+    best_lag = 2  # default
+    best_score = -1
+    for lag in range(0, 5):
+        aligned = align_nav_dates_from_rets(fund_rets, bench_rets, lag)
+        if len(aligned) < 20:
+            continue
+        metrics = compute_tracking_metrics(aligned)
+        r2 = metrics.get("r_squared", 0)
+        te = metrics.get("tracking_error", 1)
+        score = r2 - te * 2  # higher R², lower TE = better
+        if score > best_score:
+            best_score = score
+            best_lag = lag
+    return best_lag
+
+
+def _align_from_rets(fund_rets: List[Tuple[date, float]],
+                     bench_rets: List[Tuple[date, float]],
+                     lag: int) -> List[Tuple[date, float, float]]:
+    """从收益率列表对齐，拉回到 benchmark_mapper 的 align_nav_dates 接口。"""
+    bench_dict = {d: r for d, r in bench_rets}
+    aligned = []
+    for d, fr in fund_rets:
+        bench_date = d - timedelta(days=lag)
+        for offset in range(5):
+            bd = bench_date - timedelta(days=offset)
+            br = bench_dict.get(bd)
+            if br is not None:
+                aligned.append((d, fr, br))
+                break
+    return aligned
+
+
+# Keep old name for backward compat
+align_nav_dates_from_rets = _align_from_rets
+
+
 def align_nav_dates(fund_navs: List[Tuple[date, float]],
                     benchmark_returns: List[Tuple[date, float]],
                     lag_days: int = 2) -> List[Tuple[date, float, float]]:

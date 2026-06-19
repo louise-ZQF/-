@@ -69,6 +69,82 @@ class EastMoney:
             source="eastmoney",
         )
 
+    # ---- 基金元数据 ----
+    def fund_info(self, code: str) -> dict:
+        """获取基金元数据：规模、费率、成立日期、申购状态。"""
+        url = f"http://fund.eastmoney.com/f10/jbgk_{code}.html"
+        text = self.http.get(url, cache_key=f"fund_info:{code}",
+                             headers={"Referer": "http://fund.eastmoney.com/"})
+        if not text:
+            return {}
+
+        info = {}
+
+        # 成立日期
+        m = re.search(r'成立日期[：:]\s*(\d{4}-\d{2}-\d{2})', text)
+        if m:
+            info["inception_date"] = m.group(1)
+
+        # 基金规模（取数字部分）
+        m = re.search(r'基金规模[：:]\s*([\d.]+)\s*(亿元|万元|元)', text)
+        if m:
+            val = float(m.group(1))
+            unit = m.group(2)
+            if unit == "亿元":
+                val *= 1e8
+            elif unit == "万元":
+                val *= 1e4
+            info["fund_size"] = val
+
+        # 管理费率
+        m = re.search(r'管理费率[：:]\s*([\d.]+)%', text)
+        if m:
+            info["management_fee"] = float(m.group(1)) / 100
+
+        # 托管费率
+        m = re.search(r'托管费率[：:]\s*([\d.]+)%', text)
+        if m:
+            info["custodian_fee"] = float(m.group(1)) / 100
+
+        # 销售服务费
+        m = re.search(r'销售服务费率[：:]\s*([\d.]+)%', text)
+        if m:
+            info["sales_service_fee"] = float(m.group(1)) / 100
+
+        # 申购状态
+        if "暂停申购" in text:
+            info["purchase_status"] = "suspended"
+        elif "开放申购" in text:
+            info["purchase_status"] = "open"
+        else:
+            info["purchase_status"] = "unknown"
+
+        # 日申购限额
+        m = re.search(r'日累计申购上限[：:]\s*([\d.]+)\s*(万元|元)', text)
+        if m:
+            val = float(m.group(1))
+            if m.group(2) == "万元":
+                val *= 10000
+            info["daily_purchase_limit"] = val
+
+        # 业绩比较基准
+        m = re.search(r'业绩比较基准[：:]\s*(.+?)(?:\n|<)', text)
+        if m:
+            info["benchmark_text"] = m.group(1).strip()[:100]
+
+        # 基金经理 + 任职日期
+        m = re.search(r'基金经理[：:].*?(\d{4}-\d{2}-\d{2})', text)
+        if m:
+            info["manager_start_date"] = m.group(1)
+
+        # 计算综合年费率
+        mgmt = info.get("management_fee", 0)
+        cust = info.get("custodian_fee", 0)
+        sales = info.get("sales_service_fee", 0)
+        info["annual_fee"] = round(mgmt + cust + sales, 4) if (mgmt or cust or sales) else None
+
+        return info
+
     # ---- 历史净值 ----
     _PAGE_SIZE = 20  # API 单页最大条数
 

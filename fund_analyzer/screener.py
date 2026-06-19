@@ -18,6 +18,7 @@ from .fund_classifier import classify_fund, is_passive_index
 from .benchmark_mapper import (
     get_benchmark_info, get_qdii_lag, get_fx_code,
     align_nav_dates, compute_tracking_metrics,
+    combine_index_and_fx, estimate_best_lag,
 )
 from .hard_filters import apply_hard_filters
 from .robust_normalizer import normalize_funds
@@ -112,6 +113,27 @@ def _fetch_rank(http: HttpClient, fund_type: str = "all", sort_by: str = "1nzf",
     return results
 
 
+def _fetch_full_universe(http: HttpClient, fund_type: str = "qdii",
+                         max_pages: int = 5) -> List[dict]:
+    """获取完整基金列表（分页，按代码排序，不按收益）。"""
+    all_funds = []
+    for page in range(1, max_pages + 1):
+        rows = _fetch_rank(http, fund_type, "1nzf", page, 50)
+        if not rows:
+            break
+        all_funds.extend(rows)
+        if len(rows) < 50:
+            break
+    # 去重
+    seen = set()
+    unique = []
+    for f in all_funds:
+        if f["code"] not in seen:
+            seen.add(f["code"])
+            unique.append(f)
+    return unique
+
+
 # ============================================================================
 # 新版筛选流程
 # ============================================================================
@@ -135,10 +157,10 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
     # Step 1: 获取候选基金
     candidates = []
     if category == "us_qdii":
-        candidates = _fetch_rank(http, "qdii", "1nzf", 1, 50)
+        candidates = _fetch_full_universe(http, "qdii", max_pages=5)
     elif category == "a_stock":
         for ft in ["gp", "hh", "zs"]:
-            candidates += _fetch_rank(http, ft, "1nzf", 1, 30)
+            candidates += _fetch_full_universe(http, ft, max_pages=3)
     else:
         candidates = _fetch_rank(http, "all", "1nzf", 1, 50)
 
@@ -152,7 +174,7 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
 
     # Step 2: 分类 + 获取数据
     classified_funds = []
-    for c in unique[:30]:  # 最多分析30只，控制耗时
+    for c in unique:  # 分析所有候选
         fc = classify_fund(c["code"], c["name"])
 
         # 拉净值
@@ -161,13 +183,34 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             continue
         navs = [p.nav for p in navpoints if p.nav]
 
+        # 获取基金元数据（规模、费率、成立日期、申购状态）
+        meta = em.fund_info(c["code"])
+
         # 拉基准收益
         bm_info = get_benchmark_info(fc.benchmark_code)
         lag = get_qdii_lag(fc.benchmark_code) if fc.is_qdii else 1
         bench_rets = mi.returns(fc.benchmark_code, rng="2y")
 
-        # 对齐
+        # QDII：合并汇率收益 → 人民币计价
+        if fc.is_qdii and fc.asset_region in ("us", "hk"):
+            fx_code = get_fx_code(fc.benchmark_code)
+            if fx_code:
+                fx_rets = mi.returns(fx_code, rng="2y")
+                if fx_rets:
+                    bench_rets = combine_index_and_fx(bench_rets, fx_rets)
+
+        # 对齐（用 estimate_best_lag 优化滞后天数）
         fund_nav_tuples = [(p.d, p.nav) for p in navpoints]
+        if len(bench_rets) >= 60:
+            fund_rets = []
+            for i in range(1, len(fund_nav_tuples)):
+                d, nav = fund_nav_tuples[i]
+                _, prev_nav = fund_nav_tuples[i - 1]
+                if prev_nav and prev_nav > 0:
+                    fund_rets.append((d, nav / prev_nav - 1.0))
+            best_lag = estimate_best_lag(fund_rets, bench_rets)
+            if best_lag != lag:
+                lag = best_lag
         aligned = align_nav_dates(fund_nav_tuples, bench_rets, lag)
 
         # 跟踪指标
@@ -187,15 +230,20 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             "factors": fs,
             "ret_1y": c.get("ret_1y", 0),
             "ret_3y": c.get("ret_3y", 0),
-            "annual_fee": 0.006,
-            "fund_size": 1e8,  # placeholder
+            "annual_fee": meta.get("annual_fee"),
+            "fund_size": meta.get("fund_size"),
             "benchmark_code": fc.benchmark_code,
             "is_passive": fc.fund_type == "passive_index",
-            "inception_date": str(navpoints[0].d) if navpoints else str(date.today()),
+            "inception_date": meta.get("inception_date") or str(navpoints[0].d) if navpoints else str(date.today()),
             "nav_days": len(navpoints),
-            "expected_days": 200,
-            "purchase_status": "open",
+            "expected_days": max(252, len(navpoints)),
+            "purchase_status": meta.get("purchase_status", "unknown"),
             "peer_group": f"{fc.asset_region}_{fc.fund_type}",
+            "data_quality": {
+                "fee_missing": meta.get("annual_fee") is None,
+                "size_missing": meta.get("fund_size") is None,
+                "inception_missing": meta.get("inception_date") is None,
+            },
         })
 
     # Step 3: 硬性过滤

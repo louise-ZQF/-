@@ -139,8 +139,11 @@ def _trend_quality_score(navs: Sequence[float]) -> Tuple[float, str]:
     return round(score, 1), note
 
 
-def _value_score(navs: Sequence[float]) -> Tuple[float, str]:
-    """估值因子：当前净值在历史区间中的位置。"""
+def _price_position_score(navs: Sequence[float]) -> Tuple[float, str]:
+    """价格位置（非估值！）：当前净值在历史区间的位置。
+
+    高分 = 处于低位（不是便宜，是位置低）。这只反映相对自身历史的位置。
+    """
     if len(navs) < 60:
         return 50.0, "数据不足"
 
@@ -148,21 +151,18 @@ def _value_score(navs: Sequence[float]) -> Tuple[float, str]:
     hist = navs[-252:] if len(navs) >= 252 else navs  # 最多1年
     percentile = sum(1 for n in hist if n <= current) / len(hist)
 
-    # 低估 = 高分（值得买），高估 = 低分
-    # 分位 < 20% → 低估 → 80-100分
-    # 分位 > 80% → 高估 → 0-20分
     score = (1 - percentile) * 100
 
-    if percentile <= 0.15:
-        note = f"极度低估(分位{percentile*100:.0f}%)，历史底部"
-    elif percentile <= 0.30:
-        note = f"偏低估值(分位{percentile*100:.0f}%)，有安全边际"
+    if percentile <= 0.20:
+        note = f"价格处于近1年低位(分位{percentile*100:.0f}%)"
+    elif percentile <= 0.40:
+        note = f"价格偏低(分位{percentile*100:.0f}%)"
+    elif percentile <= 0.60:
+        note = f"价格中等(分位{percentile*100:.0f}%)"
     elif percentile <= 0.70:
-        note = f"估值合理(分位{percentile*100:.0f}%)"
-    elif percentile <= 0.85:
-        note = f"估值偏高(分位{percentile*100:.0f}%)，注意风险"
+        note = f"价格偏高(分位{percentile*100:.0f}%)"
     else:
-        note = f"极度高估(分位{percentile*100:.0f}%)，历史高位"
+        note = f"价格处于近1年高位(分位{percentile*100:.0f}%)"
 
     return round(score, 1), note
 
@@ -294,7 +294,7 @@ def compute_factor_scores(navs: Sequence[float], annual_fee: float = 0.0) -> Fac
     # 逐因子计算
     fs.momentum, n_mom = _momentum_score(navs)
     fs.trend_quality, n_trend = _trend_quality_score(navs)
-    fs.value, n_val = _value_score(navs)
+    fs.value, n_val = _price_position_score(navs)
     fs.risk_adjusted, n_ra = _risk_adjusted_score(rets, navs)
     fs.vol_regime, n_vol = _vol_regime_score(rets)
     fs.drawdown_recovery, n_dd = _drawdown_recovery_score(navs)
@@ -347,6 +347,7 @@ def compute_factor_scores(navs: Sequence[float], annual_fee: float = 0.0) -> Fac
     fs.quality_score = round(q_risk + consistency * 0.2 + dd_ctrl * 0.2 + fee_score * 0.2, 1)
 
     # ---- 择时分（Timing Score）：现在是不是买入时机 ----
+    # 注意：price_position 不是真实估值（PE/PB），基金无公开持仓无法计算真实估值
     fs.timing_score = round(
         fs.value * 0.4
         + fs.momentum * 0.2
