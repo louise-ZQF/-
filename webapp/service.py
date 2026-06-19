@@ -68,8 +68,13 @@ def build_live_json(holdings_path_override: Optional[str] = None) -> dict:
             "portfolio_notes": [], "market_brief": [],
             "overview": {"has_value": False},
         }
-    rep = Analyzer(settings).run(holdings)
-    return report_to_dict(rep, settings.report_title, "live")
+    analyzer = Analyzer(settings)
+    rep = analyzer.run(holdings)
+    indicators = analyzer.market_indicators()
+    result = report_to_dict(rep, settings.report_title, "live")
+    if indicators:
+        result["market_indicators"] = indicators
+    return result
 
 
 # ----------------------------------------------------------------------------
@@ -256,6 +261,7 @@ def run_ai_analysis(funds: List[dict]) -> dict:
     from fund_analyzer.config import load_settings, _parse_holding
     from fund_analyzer.datasource.base import HttpClient
     from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.datasource.market_index import MarketIndex
     from fund_analyzer.portfolio import analyze_fund
 
     settings = load_settings(DEFAULT_SETTINGS)
@@ -266,6 +272,7 @@ def run_ai_analysis(funds: List[dict]) -> dict:
         timeout=settings.datasource.request_timeout,
     )
     em = EastMoney(http)
+    mi = MarketIndex(http)
 
     fas = []
     for h in holdings:
@@ -275,6 +282,9 @@ def run_ai_analysis(funds: List[dict]) -> dict:
 
     total_value = sum(fa.market_value or 0 for fa in fas)
 
+    # 市场情绪指标
+    indicators = mi.get_market_snapshot()
+
     # 搜索新闻
     news = {}
     for fa in fas:
@@ -282,7 +292,7 @@ def run_ai_analysis(funds: List[dict]) -> dict:
         if n:
             news[fa.holding.code] = n
 
-    analysis = ai_analyze_portfolio(fas, news, total_value)
+    analysis = ai_analyze_portfolio(fas, news, total_value, indicators)
 
     return {
         "funds": {

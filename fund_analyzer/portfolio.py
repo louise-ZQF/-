@@ -193,3 +193,7 @@ class Analyzer:
             d, r = fx[-1]
             brief.append(f"美元兑人民币 {r*100:+.2f}%（未对冲的美股 QDII 受其影响）")
         return brief
+
+    def market_indicators(self) -> list:
+        """获取市场情绪指标快照。"""
+        return self.mi.get_market_snapshot()

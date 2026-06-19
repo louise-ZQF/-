@@ -109,6 +109,11 @@ function renderDashboard(d){
     });
   }else hp.classList.add('hidden');
 
+  // 市场体温计
+  if(d.market_indicators && d.market_indicators.length){
+    renderThermo(d.market_indicators);
+  }
+
   // 资产分布
   renderAllocation(d.allocation||[]);
 
@@ -137,6 +142,34 @@ function cardEl(k, v, sub, colorVal){
   if(colorVal!=null) vCls = colorVal>0?'pos':(colorVal<0?'neg':'');
   el.innerHTML = `<div class="k">${esc(k)}</div><div class="v ${vCls}">${esc(v)}</div><div class="sub">${esc(sub||'')}</div>`;
   return el;
+}
+
+function renderThermo(indicators){
+  const panel=$('#marketThermo'); if(!panel) return;
+  panel.classList.remove('hidden');
+  const grid=$('#thermoGrid');
+  const levelLabels={low:'偏低', normal:'正常', high:'偏高'};
+  const levelIcons={low:'🟢', normal:'🟡', high:'🔴'};
+  grid.innerHTML=indicators.map(ind=>{
+    const icon=levelIcons[ind.level]||'⚪';
+    const label=levelLabels[ind.level]||ind.level;
+    return `<div class="thermo-card">
+      <div class="thermo-head">
+        <span class="thermo-label">${esc(ind.label)}</span>
+        <span class="thermo-level" style="color:${ind.color}">${icon} ${label}</span>
+      </div>
+      <div class="thermo-value">
+        <span class="thermo-num">${ind.value}</span>
+        <span class="thermo-chg ${ind.change_pct>0?'pos':'neg'}">${ind.change_pct>=0?'+':''}${ind.change_pct}%</span>
+        ${ind.ma20 ? `<span class="thermo-ma">MA20: ${ind.ma20}</span>` : ''}
+      </div>
+      <div class="thermo-bar-wrap">
+        <div class="thermo-grad"></div>
+        <div class="thermo-dot" style="left:${ind.value_percent||50}%;background:${ind.color}"></div>
+      </div>
+      <div class="thermo-desc">${esc(ind.desc)}</div>
+    </div>`;
+  }).join('');
 }
 
 function renderAllocation(alloc){
