@@ -13,6 +13,8 @@
    - 或挂一块**持久盘**，并设 `HOLDINGS_PATH=/data/holdings.yaml`（如 Fly.io 方案）。
 3. **服务器要能联网取数**：应用要访问天天基金和 Yahoo 行情。境外服务器（新加坡/东京/香港）都能访问，
    没问题；国内服务器访问 Yahoo 可能需要自备网络方案（也可改用其它指数源）。
+4. **AI 分析需要 DeepSeek API key**：设置环境变量 `DEEPSEEK_API_KEY` 后，仪表盘会出现 AI 分析面板。
+   不设则不显示 AI 功能。OCR 导入需要容器安装 `tesseract-ocr`。
 
 ---
 
@@ -26,6 +28,7 @@
      启动命令 `gunicorn -b 0.0.0.0:$PORT -w 2 --timeout 120 wsgi:app`。
 3. 在服务的 **Environment** 里填：
    - `APP_PASSWORD` = 你的登录密码（必填）
+   - `DEEPSEEK_API_KEY` = DeepSeek API 密钥（可选，用于 AI 智能分析）
    - `HOLDINGS_YAML` = 你的持仓 YAML 全文（免费档无持久盘时用它保存持仓）
    - 想线上也发邮件：再填 `SMTP_PROVIDER`/`SMTP_USER`/`SMTP_PASSWORD`/`MAIL_TO`
 4. 部署完成后会给你一个网址 `https://xxx.onrender.com`，手机浏览器打开、输入密码即可。
