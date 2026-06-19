@@ -190,3 +190,22 @@ main{max-width:1040px; margin:0 auto; padding:18px}
 .nf-icon{flex:0 0 auto; font-size:14px}
 .nf-text{flex:1}
 
+/* ---------- 市场体温计 ---------- */
+.thermo-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+.thermo-card{background:#f9fafb; border-radius:10px; padding:10px 12px}
+.thermo-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:4px}
+.thermo-label{font-weight:700; font-size:12px; color:#374151}
+.thermo-level{font-size:11px; font-weight:700}
+.thermo-value{display:flex; align-items:baseline; gap:6px; margin:4px 0}
+.thermo-num{font-size:20px; font-weight:750; letter-spacing:-.5px}
+.thermo-chg{font-size:12px; font-weight:600}
+.thermo-ma{font-size:11px; color:var(--muted); margin-left:4px}
+.thermo-bar-wrap{position:relative; height:6px; background:#e6e9ee; border-radius:3px; margin:6px 0}
+.thermo-grad{position:absolute; inset:0; border-radius:3px; background:linear-gradient(to right,#16a34a 0%,#16a34a 30%,#f59e0b 60%,#dc2626 100%)}
+.thermo-dot{position:absolute; top:-3px; width:12px; height:12px; border-radius:50%; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.2); transform:translateX(-50%)}
+.thermo-desc{font-size:10.5px; color:var(--muted); line-height:1.4; margin-top:4px}
+
+@media (max-width:760px){
+  .thermo-grid{grid-template-columns:repeat(2,1fr)}
+}
+

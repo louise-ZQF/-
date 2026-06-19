@@ -85,8 +85,9 @@ def _fund_snapshot(fa) -> str:
 
 def build_fund_prompt(funds: List, news: Dict[str, List[str]] = None,
                       macro_events: List[str] = None,
-                      institutional_views: List[str] = None) -> str:
-    """构建逐只分析 prompt，包含机构观点和宏观事件。"""
+                      institutional_views: List[str] = None,
+                      market_indicators: List[dict] = None) -> str:
+    """构建逐只分析 prompt，包含机构观点、宏观事件、市场情绪指标。"""
     news = news or {}
     fund_texts = []
     for fa in funds:
@@ -95,6 +96,15 @@ def build_fund_prompt(funds: List, news: Dict[str, List[str]] = None,
         if code_news:
             t += f"\n相关新闻: {'; '.join(code_news[:5])}"
         fund_texts.append(t)
+
+    # 市场情绪指标摘要
+    market_block = ""
+    if market_indicators:
+        lines = []
+        for ind in market_indicators:
+            emoji = "🟢" if ind["level"] == "low" else ("🔴" if ind["level"] == "high" else "🟡")
+            lines.append(f"{emoji} {ind['label']}: {ind['value']}（{ind['level']}）")
+        market_block = "\n## 当前市场情绪指标\n" + "\n".join(lines) + "\n（这些指标反映市场整体风险偏好，请结合判断）"
 
     # 宏观事件摘要
     macro_block = ""
@@ -107,6 +117,8 @@ def build_fund_prompt(funds: List, news: Dict[str, List[str]] = None,
         inst_block = "\n## 主要机构观点\n" + "\n".join(f"- {v}" for v in institutional_views[:8])
 
     header = f"""你是华尔街顶级基金分析师。今天是{datetime.now().strftime('%Y年%m月%d日')}。
+
+{market_block}
 
 {macro_block}
 {inst_block}
@@ -273,7 +285,8 @@ def parse_ai_response(text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def ai_analyze_portfolio(funds: List, news: Dict[str, List[str]] = None,
-                         total_value: float = 0) -> AiPortfolioAnalysis:
+                         total_value: float = 0,
+                         market_indicators: List[dict] = None) -> AiPortfolioAnalysis:
     """一站式 AI 分析。"""
     result = AiPortfolioAnalysis()
 
@@ -287,7 +300,7 @@ def ai_analyze_portfolio(funds: List, news: Dict[str, List[str]] = None,
     inst_views = search_institutional_views(funds)
 
     # 1. 逐只分析
-    fund_prompt = build_fund_prompt(funds, news, macro_events, inst_views)
+    fund_prompt = build_fund_prompt(funds, news, macro_events, inst_views, market_indicators)
     fund_resp = call_deepseek(fund_prompt)
     if fund_resp:
         parsed = parse_ai_response(fund_resp)
