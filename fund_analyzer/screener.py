@@ -1,45 +1,55 @@
-"""基金筛选器 + 智能买卖提醒。
+"""基金筛选器 v2：分类建模 + 基准调整 + 稳健标准化 + 置信度 + 去重。
 
-数据源: 天天基金排行 API + 历史净值 API
-筛选维度:
-  - 美股 QDII: 长期收益 + 夏普比率 + 最大回撤
-  - A股基金: 夏普比率 + 估值分位 + 波动率
-
-智能提醒（基于持仓 + 量化因子）:
-  - 🎯 止盈: 持仓收益超阈值
-  - 📈 加大定投: 因子好转 + 估值低位
-  - ⚠️ 减少定投: 因子恶化 + 估值高位
-  - 🛑 卖出信号: 趋势走坏 + 回撤加深
+不再使用天天基金排行作为评分输入。
 """
 from __future__ import annotations
 
+import math
 import re
 import statistics
-import math
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import List, Optional, Tuple
+from datetime import date, datetime
+from typing import Dict, List, Optional, Tuple
 
 from .datasource.base import HttpClient
+from .datasource.eastmoney import EastMoney
+from .datasource.market_index import MarketIndex
+from .fund_classifier import classify_fund, is_passive_index
+from .benchmark_mapper import (
+    get_benchmark_info, get_qdii_lag, get_fx_code,
+    align_nav_dates, compute_tracking_metrics,
+)
+from .hard_filters import apply_hard_filters
+from .robust_normalizer import normalize_funds
+from .fund_scorers import score_passive_index, score_active_equity
+from .share_class_dedup import deduplicate_share_classes, deduplicate_same_index
+from .overlap_filter import remove_high_correlation
+from .confidence import compute_confidence, adjust_score_with_confidence
+from .factors import compute_factor_scores, FactorScores
 
 
-# ---------------------------------------------------------------------------
+# ============================================================================
 # 数据结构
-# ---------------------------------------------------------------------------
+# ============================================================================
 
 @dataclass
 class ScreenedFund:
-    """筛选结果中的一只基金。"""
+    """筛选结果。"""
     code: str
     name: str
-    fund_type: str          # "QDII美股" | "A股" | "混合" | "债券"
-    ret_1y: float = 0.0     # 近1年收益（小数）
-    ret_3y: float = 0.0     # 近3年收益
-    sharpe: float = 0.0     # 估算夏普比率
-    max_dd: float = 0.0     # 最大回撤（小数）
-    vol_annual: float = 0.0 # 年化波动
-    factor_score: float = 0.0  # 综合因子评分 0-100
-    recommendation: str = ""   # "强烈推荐" | "推荐" | "关注" | "观望"
+    fund_type: str          # "被动指数" | "主动权益"
+    asset_region: str
+    benchmark_code: str
+    benchmark_name: str
+    composite_score: float = 0.0
+    confidence: float = 0.0
+    final_score: float = 0.0
+    peer_rank: str = ""
+    model_type: str = ""     # "passive_index" | "active_equity"
+    detail_scores: dict = field(default_factory=dict)
+    strengths: List[str] = field(default_factory=list)
+    risks: List[str] = field(default_factory=list)
+    dedup_note: str = ""
 
 
 @dataclass
@@ -53,29 +63,11 @@ class Alert:
     action: str      # 具体操作建议
 
 
-# ---------------------------------------------------------------------------
-# 天天基金排行 API
-# ---------------------------------------------------------------------------
+# ============================================================================
+# 天天基金排行 API（仅用于基金发现，不用于评分）
+# ============================================================================
 
 _RANK_URL = "http://fund.eastmoney.com/data/rankhandler.aspx"
-
-# 基金类型筛选参数
-_TYPE_MAP = {
-    "all": "all",
-    "stock": "gp",       # 股票型
-    "hybrid": "hh",      # 混合型
-    "bond": "zq",        # 债券型
-    "index": "zs",       # 指数型
-    "qdii": "qdii",      # QDII
-}
-
-# 排序指标
-_SORT_MAP = {
-    "ret_1y": "1nzf",     # 近1年涨幅
-    "ret_3y": "3nzf",     # 近3年涨幅
-    "ret_6m": "6yzf",     # 近6月涨幅
-    "ret_3m": "3yzf",     # 近3月涨幅
-}
 
 
 def _fetch_rank(http: HttpClient, fund_type: str = "all", sort_by: str = "1nzf",
@@ -92,25 +84,19 @@ def _fetch_rank(http: HttpClient, fund_type: str = "all", sort_by: str = "1nzf",
         return []
 
     # 返回格式: var rankData = {datas:[...], allRecords:...}
-    # 注意：天天基金的 JSON key 没有引号，不能用 json.loads
-    # 直接用正则提取 datas 数组中的每个字符串
     m = re.search(r'datas:\s*\[(.*?)\]\s*,', text, re.DOTALL)
     if not m:
         return []
-    # 按 \" 分割每个基金条目
     entries = re.findall(r'"([^"]+)"', m.group(1))
     rows = entries
     results = []
     for row in rows:
-        # 格式: "000001,基金名称,基金类型,近1年涨幅,近3年涨幅,...,"
         parts = row.split(",")
         if len(parts) < 5:
             continue
         try:
             code = parts[0].strip()
             name = parts[1].strip()
-            # 字段: code,name,pinyin,date,nav,cum_nav,日涨幅,近1周,近1月,近3月,近6月,近1年,近2年,近3年,...
-            # 0    1    2      3    4   5        6      7     8     9     10    11     12     13
             ret_1y_str = parts[11] if len(parts) > 11 else "0"
             ret_3y_str = parts[13] if len(parts) > 13 else "0"
             ret_1y = float(ret_1y_str) / 100.0 if ret_1y_str else 0
@@ -126,159 +112,184 @@ def _fetch_rank(http: HttpClient, fund_type: str = "all", sort_by: str = "1nzf",
     return results
 
 
-def _estimate_sharpe_from_navs(navs: List[float]) -> float:
-    """从净值序列估算年化夏普比率。"""
-    if len(navs) < 60:
-        return 0.0
-    rets = [navs[i] / navs[i - 1] - 1 for i in range(1, len(navs)) if navs[i - 1]]
-    if not rets:
-        return 0.0
-    ann_ret = sum(rets) / len(rets) * 252
-    ann_vol = statistics.stdev(rets) * math.sqrt(252) if len(rets) > 1 else 0.0
-    if ann_vol < 0.001:
-        return 0.0
-    return (ann_ret - 0.02) / ann_vol  # rf = 2%
+# ============================================================================
+# 新版筛选流程
+# ============================================================================
 
+def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
+                    category: str = "us_qdii", top_n: int = 20) -> List[ScreenedFund]:
+    """新版筛选主流程。
 
-def _estimate_max_dd(navs: List[float]) -> float:
-    """从净值序列算最大回撤。"""
-    if not navs:
-        return 0.0
-    peak = navs[0]
-    max_dd = 0.0
-    for nav in navs:
-        if nav > peak:
-            peak = nav
-        dd = (nav - peak) / peak
-        if dd < max_dd:
-            max_dd = dd
-    return max_dd
-
-
-# ---------------------------------------------------------------------------
-# 筛选逻辑
-# ---------------------------------------------------------------------------
-
-QDII_US_KEYWORDS = [
-    "纳斯达克", "纳指", "标普", "美股", "道琼斯", "费城半导体",
-    "全球科技", "全球成长", "全球高端", "全球产业", "全球新",
-    "新兴市场", "海外", "QDII", "美国", "美元", "摩根",
-    "互联", "移动互联",
-]
-
-
-def _is_us_qdii(name: str) -> bool:
-    """判断是否为美股相关 QDII。"""
-    for kw in QDII_US_KEYWORDS:
-        if kw in name:
-            return True
-    return False
-
-
-def _is_a_stock(name: str) -> bool:
-    """判断是否为 A 股基金。"""
-    a_keywords = ["沪深300", "中证500", "上证50", "创业板", "科创", "A股",
-                  "红利", "消费", "医药", "新能源", "半导体", "中国"]
-    for kw in a_keywords:
-        if kw in name:
-            return True
-    return not _is_us_qdii(name)
-
-
-def screen_funds(http: HttpClient, em,
-                 category: str = "us_qdii", top_n: int = 20) -> List[ScreenedFund]:
-    """筛选基金。
-
-    category: "us_qdii" | "a_stock" | "all"
+    1. 从排行API获取候选基金列表（仅作为基金发现）
+    2. 对每只基金分类 + 匹配基准
+    3. 拉历史净值 + 基准收益
+    4. 计算跟踪指标 + 因子评分
+    5. 同类内部稳健标准化
+    6. 按类型分别评分
+    7. 置信度调整
+    8. A/C去重 + 同指数去重 + 高相关去重
+    9. 排序输出
     """
-    # 1. 从排行 API 获取候选基金
+    as_of = date.today()
+
+    # Step 1: 获取候选基金
     candidates = []
     if category == "us_qdii":
-        # QDII 排行 + 可能的关键词基金
-        for ft in ["qdii", "all"]:
-            candidates += _fetch_rank(http, ft, _SORT_MAP["ret_1y"], 1, 50)
+        candidates = _fetch_rank(http, "qdii", "1nzf", 1, 50)
     elif category == "a_stock":
         for ft in ["gp", "hh", "zs"]:
-            candidates += _fetch_rank(http, ft, _SORT_MAP["ret_1y"], 1, 30)
+            candidates += _fetch_rank(http, ft, "1nzf", 1, 30)
     else:
-        candidates = _fetch_rank(http, "all", _SORT_MAP["ret_1y"], 1, 50)
+        candidates = _fetch_rank(http, "all", "1nzf", 1, 50)
 
     # 去重
-    seen = set()
+    seen_codes = set()
     unique = []
     for c in candidates:
-        if c["code"] not in seen:
-            seen.add(c["code"])
+        if c["code"] not in seen_codes:
+            seen_codes.add(c["code"])
             unique.append(c)
 
-    # 2. 对每只基金计算更详细的指标
-    results = []
-    for c in unique:
-        # 类型判断
-        if category == "us_qdii" and not _is_us_qdii(c["name"]):
-            continue
-        elif category == "a_stock" and not _is_a_stock(c["name"]):
-            continue
+    # Step 2: 分类 + 获取数据
+    classified_funds = []
+    for c in unique[:30]:  # 最多分析30只，控制耗时
+        fc = classify_fund(c["code"], c["name"])
 
-        # 获取历史净值计算夏普和回撤
-        navpoints = em.history(c["code"], size=200)  # TODO: increase to 750 for production use
+        # 拉净值
+        navpoints = em.history(c["code"], size=200)
         if len(navpoints) < 40:
             continue
         navs = [p.nav for p in navpoints if p.nav]
 
-        sharpe = _estimate_sharpe_from_navs(navs)
-        max_dd = _estimate_max_dd(navs)
-        vol_annual = statistics.stdev(
-            [navs[i] / navs[i - 1] - 1 for i in range(1, len(navs)) if navs[i - 1]]
-        ) * math.sqrt(252) if len(navs) > 1 else 0
+        # 拉基准收益
+        bm_info = get_benchmark_info(fc.benchmark_code)
+        lag = get_qdii_lag(fc.benchmark_code) if fc.is_qdii else 1
+        bench_rets = mi.returns(fc.benchmark_code, rng="2y")
 
-        # 用因子评分做综合判断
-        from .factors import compute_factor_scores
+        # 对齐
+        fund_nav_tuples = [(p.d, p.nav) for p in navpoints]
+        aligned = align_nav_dates(fund_nav_tuples, bench_rets, lag)
+
+        # 跟踪指标
+        tracking = compute_tracking_metrics(aligned) if aligned else {}
+
+        # 因子评分
         fs = compute_factor_scores(navs)
-        factor_score = fs.composite
 
-        # 确定推荐等级
-        if factor_score >= 75 and sharpe > 1.0 and max_dd > -0.15:
-            rec = "强烈推荐"
-        elif factor_score >= 60 and sharpe > 0.6:
-            rec = "推荐"
-        elif factor_score >= 45:
-            rec = "关注"
+        classified_funds.append({
+            "code": c["code"],
+            "name": c["name"],
+            "fund_class": fc,
+            "navpoints": navpoints,
+            "navs": navs,
+            "aligned": aligned,
+            "tracking": tracking,
+            "factors": fs,
+            "ret_1y": c.get("ret_1y", 0),
+            "ret_3y": c.get("ret_3y", 0),
+            "annual_fee": 0.006,
+            "fund_size": 1e8,  # placeholder
+            "benchmark_code": fc.benchmark_code,
+            "is_passive": fc.fund_type == "passive_index",
+            "inception_date": str(navpoints[-1].d) if len(navpoints) > 1 else str(date.today()),
+            "nav_days": len(navpoints),
+            "expected_days": 200,
+            "purchase_status": "open",
+            "peer_group": f"{fc.asset_region}_{fc.fund_type}",
+        })
+
+    # Step 3: 硬性过滤
+    passed, _ = apply_hard_filters(classified_funds, category, as_of)
+    if not passed:
+        return []
+
+    # Step 4-5: 按类型评分 + 标准化
+    for f in passed:
+        fc = f["fund_class"]
+        if fc.fund_type == "passive_index":
+            result = score_passive_index(f, f["tracking"])
         else:
-            rec = "观望"
+            fund_rets = []
+            bench_rets_list = [r[2] for r in (f.get("aligned") or [])]
+            navs = f.get("navs", [])
+            if len(navs) >= 2:
+                fund_rets = [navs[i]/navs[i-1]-1 for i in range(1, len(navs)) if navs[i-1]]
+            result = score_active_equity(f, f["tracking"], fund_rets, bench_rets_list)
 
-        # 按类别过滤最低标准
-        if category == "us_qdii":
-            if c["ret_1y"] < 0.0:  # 只筛掉负收益的
-                continue
-        elif category == "a_stock":
-            if sharpe < 0.2:  # A 股至少夏普 > 0.2
-                continue
+        f["model_type"] = result["model"]
+        f["detail_scores"] = result["scores"]
+        f["composite_score"] = result["composite"]
+
+    # Step 6: 同类内部稳健标准化
+    score_metrics = ["composite_score"]
+    passed = normalize_funds(passed, score_metrics, group_by="peer_group")
+
+    # 更新 composite_score 为标准化的
+    for f in passed:
+        f["composite_score"] = f.get("composite_score_score", f["composite_score"])
+
+    # Step 7: 置信度调整
+    for f in passed:
+        conf = compute_confidence(f)
+        f["confidence"] = conf["confidence"]
+        f["final_score"] = round(adjust_score_with_confidence(
+            f["composite_score"], conf["confidence"] / 100
+        ), 1)
+
+    # Step 8: 去重
+    passed = deduplicate_share_classes(passed)
+    passed = deduplicate_same_index(passed)
+
+    # 按 final_score 排序
+    passed.sort(key=lambda x: x["final_score"], reverse=True)
+
+    # Step 9: 构建结果
+    results = []
+    for i, f in enumerate(passed[:top_n]):
+        fc = f["fund_class"]
+        bm_info = get_benchmark_info(fc.benchmark_code)
+        peer_n = len([x for x in passed if x["peer_group"] == f["peer_group"]])
+        ds = f.get("detail_scores", {})
+
+        # 识别优势
+        strengths = []
+        for k, v in sorted(ds.items(), key=lambda x: -x[1]):
+            if v >= 80:
+                strengths.append(f"{k}: {v:.0f}/100")
+
+        # 识别风险
+        risks = []
+        if f.get("size_warning"):
+            risks.append("规模偏小")
+        if f.get("purchase_status") == "suspended":
+            risks.append("暂停申购")
+        if f["confidence"] < 50:
+            risks.append(f"置信度偏低({f['confidence']:.0f}%)")
 
         results.append(ScreenedFund(
-            code=c["code"],
-            name=c["name"],
-            fund_type="QDII美股" if _is_us_qdii(c["name"]) else "A股",
-            ret_1y=c["ret_1y"],
-            ret_3y=c["ret_3y"],
-            sharpe=round(sharpe, 2),
-            max_dd=round(max_dd, 3),
-            vol_annual=round(vol_annual, 3) if vol_annual else 0,
-            factor_score=round(factor_score, 1),
-            recommendation=rec,
+            code=f["code"],
+            name=f.get("name", ""),
+            fund_type="被动指数" if fc.fund_type == "passive_index" else "主动权益",
+            asset_region=fc.asset_region,
+            benchmark_code=fc.benchmark_code,
+            benchmark_name=bm_info.get("name", ""),
+            composite_score=round(f.get("composite_score", 0), 1),
+            confidence=round(f.get("confidence", 0), 1),
+            final_score=f.get("final_score", 0),
+            peer_rank=f"{i+1}/{peer_n}",
+            model_type=f.get("model_type", ""),
+            detail_scores=ds,
+            strengths=strengths[:3],
+            risks=risks[:3],
+            dedup_note=f.get("dedup_note", ""),
         ))
 
-        if len(results) >= top_n:
-            break
-
-    # 按综合因子排序
-    results.sort(key=lambda x: x.factor_score, reverse=True)
     return results
 
 
-# ---------------------------------------------------------------------------
-# 智能持仓提醒
-# ---------------------------------------------------------------------------
+# ============================================================================
+# 智能持仓提醒（向后兼容）
+# ============================================================================
 
 def generate_alerts(funds: List, factor_data: dict = None, settings=None) -> List[Alert]:
     """基于当前持仓 + 量化因子，生成智能提醒列表。
@@ -301,7 +312,7 @@ def generate_alerts(funds: List, factor_data: dict = None, settings=None) -> Lis
                 from .factors import compute_factor_scores
                 fs = compute_factor_scores(navs)
 
-        # 1. 🎯 止盈提醒
+        # 1. 止盈提醒
         if m.holding_return and m.holding_return > 0.25:
             alerts.append(Alert(
                 code=code, name=name,
@@ -319,7 +330,7 @@ def generate_alerts(funds: List, factor_data: dict = None, settings=None) -> Lis
                 action="设好回撤止盈（从最高点回落 8% 就卖），保护利润",
             ))
 
-        # 2. 📈 加大定投信号
+        # 2. 加大定投信号
         if fs and fs.composite >= 70 and fs.value >= 60:
             if h.is_dca and h.dca_plan:
                 new_amt = h.dca_plan.amount * 1.5
@@ -339,7 +350,7 @@ def generate_alerts(funds: List, factor_data: dict = None, settings=None) -> Lis
                 action="建议启动或保持定投，可考虑一次性追加仓位",
             ))
 
-        # 3. ⚠️ 减少定投信号
+        # 3. 减少定投信号
         if fs and fs.composite < 35 and fs.value < 40:
             if h.is_dca and h.dca_plan:
                 new_amt = h.dca_plan.amount * 0.5
@@ -351,7 +362,7 @@ def generate_alerts(funds: List, factor_data: dict = None, settings=None) -> Lis
                     action=f"建议定投减半至 ¥{new_amt:.0f}/期，或暂停观望",
                 ))
 
-        # 4. 🛑 卖出警告
+        # 4. 卖出警告
         if fs and fs.composite < 25 and fs.trend_quality < 30:
             alerts.append(Alert(
                 code=code, name=name,
@@ -361,7 +372,7 @@ def generate_alerts(funds: List, factor_data: dict = None, settings=None) -> Lis
                 action="建议减仓50%以上，转投货币/短债基金等待机会",
             ))
 
-        # 5. 💡 机会提醒（因子从弱转强）
+        # 5. 机会提醒（因子从弱转强）
         if fs and fs.composite >= 55 and m.ret_1w and m.ret_1w > 0.02:
             if not any(a.code == code and a.alert_type == "increase_dca" for a in alerts):
                 alerts.append(Alert(
