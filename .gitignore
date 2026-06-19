@@ -1,0 +1,32 @@
+# ===== 隐私 / 敏感配置（务必不要提交真实数据）=====
+config/holdings.yaml
+config/settings.yaml
+.env
+*.local.yaml
+
+# ===== 运行缓存与产物 =====
+data/cache/
+data/history/
+output/
+*.html
+!fund_analyzer/templates/*.html
+*.log
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ===== 编辑器/系统 =====
+.idea/
+.vscode/
+.DS_Store
