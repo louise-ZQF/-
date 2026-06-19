@@ -1,0 +1,160 @@
+:root{
+  --bg:#f4f6f9; --card:#ffffff; --ink:#1f2933; --muted:#6b7280; --line:#e6e9ee;
+  --brand:#2563eb; --brand-d:#1d4ed8;
+  --pos:#0a7d2c; --neg:#c0392b; --amber:#b26a00; --orange:#c25e00; --gray:#6b7280;
+  --buy:#0a7d2c; --hold_pos:#2e7d32; --hold:#6b7280; --caution:#b26a00; --trim:#c25e00; --sell:#c0392b;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink); font-size:14px; line-height:1.5;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- 顶栏 ---------- */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 18px; background:var(--card); border-bottom:1px solid var(--line);
+  position:sticky; top:0; z-index:20;
+}
+.brand{display:flex; align-items:center; gap:10px}
+.logo{font-size:22px}
+.brand-title{font-weight:700; font-size:16px}
+.brand-sub{color:var(--muted); font-size:12px}
+.top-actions{display:flex; align-items:center; gap:10px}
+
+.seg{display:inline-flex; background:#eef1f5; border-radius:10px; padding:3px}
+.seg-btn{
+  border:0; background:transparent; padding:7px 14px; border-radius:8px; cursor:pointer;
+  font-size:13px; color:var(--muted); font-weight:600;
+}
+.seg-btn.active{background:var(--card); color:var(--brand); box-shadow:var(--shadow)}
+
+.btn{border:1px solid var(--line); background:var(--card); color:var(--ink);
+  padding:7px 12px; border-radius:9px; cursor:pointer; font-size:13px; font-weight:600}
+.btn:hover{border-color:#cfd6e0}
+.btn.ghost{background:var(--card)}
+.btn.primary{background:var(--brand); border-color:var(--brand); color:#fff}
+.btn.primary:hover{background:var(--brand-d)}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+
+/* ---------- 标签页 ---------- */
+.tabs{display:flex; gap:4px; padding:10px 18px 0; background:var(--card); border-bottom:1px solid var(--line)}
+.tab{border:0; background:transparent; padding:10px 14px; cursor:pointer; font-size:14px;
+  color:var(--muted); font-weight:600; border-bottom:2px solid transparent}
+.tab.active{color:var(--brand); border-bottom-color:var(--brand)}
+
+main{max-width:1040px; margin:0 auto; padding:18px}
+.view{display:none}
+.view.active{display:block}
+
+/* ---------- 概览卡片 ---------- */
+.cards{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:16px}
+.card{background:var(--card); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow)}
+.card .k{color:var(--muted); font-size:12px; margin-bottom:6px}
+.card .v{font-size:24px; font-weight:750; letter-spacing:-.3px}
+.card .sub{font-size:12px; color:var(--muted); margin-top:4px}
+
+/* ---------- 面板 ---------- */
+.panel{background:var(--card); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); margin-bottom:16px}
+.panel-title{font-weight:700; font-size:15px; margin-bottom:10px}
+.panel-title.section{margin:6px 2px 12px}
+.panel-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px}
+.panel-head-actions{display:flex; gap:8px; flex-wrap:wrap}
+.grid-2{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+
+.banner{padding:12px 14px; border-radius:12px; background:#eef4ff; color:#1e3a8a;
+  border:1px solid #dbe7ff; margin-bottom:16px; font-size:13px}
+.banner.warn{background:#fff7ed; color:#9a3412; border-color:#fed7aa}
+
+.hidden{display:none !important}
+.empty,.loading{color:var(--muted); font-size:13px; padding:18px; text-align:center}
+
+/* ---------- 重点提示 ---------- */
+.highlight-list{display:flex; flex-direction:column; gap:8px}
+.hl{display:flex; gap:10px; padding:10px 12px; background:#fafbfc; border-radius:10px; border-left:3px solid var(--gray)}
+.hl b{font-size:13px}
+.hl .hl-reason{color:var(--muted); font-size:12px; margin-top:2px}
+
+/* ---------- 行情 chips ---------- */
+.chips{display:flex; flex-wrap:wrap; gap:8px}
+.chip{background:#f1f4f8; color:#374151; border-radius:999px; padding:5px 11px; font-size:12px}
+
+/* ---------- 资产分布 ---------- */
+.alloc-wrap{display:flex; align-items:center; gap:18px; flex-wrap:wrap}
+.legend{display:flex; flex-direction:column; gap:7px; font-size:13px}
+.legend-row{display:flex; align-items:center; gap:8px}
+.legend-dot{width:10px; height:10px; border-radius:3px; flex:0 0 auto}
+.legend .lbl{color:var(--muted)}
+.legend .val{margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums}
+
+/* ---------- 基金卡片 ---------- */
+.fund-list{display:flex; flex-direction:column; gap:14px}
+.fund{background:var(--card); border-radius:var(--radius); padding:15px 16px; box-shadow:var(--shadow); cursor:pointer; transition:transform .06s}
+.fund:hover{transform:translateY(-1px)}
+.fund-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.fund-name{font-weight:700; font-size:15px}
+.fund-code{color:var(--muted); font-size:12px; font-weight:500}
+.badge{padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; color:#fff; margin-left:auto}
+.badge.buy{background:var(--buy)} .badge.hold_pos{background:var(--hold_pos)}
+.badge.hold{background:var(--hold)} .badge.caution{background:var(--caution)}
+.badge.trim{background:var(--trim)} .badge.sell{background:var(--sell)}
+
+.fund-line{display:flex; gap:16px; flex-wrap:wrap; margin:8px 0; font-size:13px}
+.fund-line .num{font-weight:700; font-variant-numeric:tabular-nums}
+
+.est{display:flex; align-items:center; gap:12px; background:#f0f7ff; border:1px solid #dbeafe;
+  border-radius:10px; padding:9px 12px; margin:8px 0; font-size:13px; color:#1e40af; flex-wrap:wrap}
+.est .big{font-size:16px; font-weight:800}
+
+.metrics{display:grid; grid-template-columns:repeat(4,1fr); gap:8px 14px; margin-top:8px}
+.metric{font-size:12px}
+.metric .ml{color:var(--muted)}
+.metric .mv{font-weight:700; font-variant-numeric:tabular-nums}
+
+.spark{margin-top:10px}
+
+.pos{color:var(--pos)} .neg{color:var(--neg)} .amber{color:var(--amber)} .muted{color:var(--muted)}
+
+/* ---------- 信号点 ---------- */
+.sig-dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px}
+.sig-hard{background:var(--neg)} .sig-pos{background:var(--pos)}
+.sig-neg{background:var(--orange)} .sig-neutral{background:var(--gray)}
+.sig-list{margin-top:8px; display:flex; flex-direction:column; gap:5px; font-size:12px; color:#374151}
+
+.notes{margin:0; padding-left:18px; color:#374151; font-size:13px}
+.notes li{margin:5px 0}
+
+.disclaimer{color:var(--muted); font-size:11px; line-height:1.6; margin:18px 2px 30px}
+
+/* ---------- 持仓表 ---------- */
+.hint{color:var(--muted); font-size:12.5px; margin:2px 0 12px}
+.hint.small{font-size:12px}
+.hint code,.disclaimer code{background:#eef1f5; padding:1px 6px; border-radius:5px}
+.table-scroll{overflow-x:auto}
+.htable{width:100%; border-collapse:collapse; font-size:13px; min-width:880px}
+.htable th{text-align:left; color:var(--muted); font-weight:600; font-size:12px; padding:6px 8px; border-bottom:1px solid var(--line)}
+.htable td{padding:5px 8px; border-bottom:1px solid #f1f3f6}
+.htable input,.htable select{width:100%; border:1px solid var(--line); border-radius:7px; padding:6px 7px; font-size:13px; background:#fff}
+.htable input:focus,.htable select:focus{outline:none; border-color:var(--brand)}
+.htable input[type=checkbox]{width:auto}
+.w-code{width:90px} .w-num{width:84px} .w-idx{width:96px} .w-lag{width:56px}
+.row-del{border:0; background:transparent; color:var(--neg); cursor:pointer; font-size:18px; line-height:1}
+.save-msg{margin-top:10px; font-size:13px; font-weight:600}
+
+/* ---------- 弹层 ---------- */
+.modal{position:fixed; inset:0; background:rgba(17,24,39,.45); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px}
+.modal-card{background:var(--card); border-radius:16px; max-width:560px; width:100%; max-height:86vh; overflow:auto; padding:22px; position:relative; box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal-close{position:absolute; top:12px; right:14px; border:0; background:transparent; font-size:24px; cursor:pointer; color:var(--muted)}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:760px){
+  .cards{grid-template-columns:1fr}
+  .grid-2{grid-template-columns:1fr}
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .brand-sub{display:none}
+  main{padding:14px}
+}

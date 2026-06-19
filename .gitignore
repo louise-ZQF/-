@@ -8,8 +8,6 @@ config/settings.yaml
 data/cache/
 data/history/
 output/
-*.html
-!fund_analyzer/templates/*.html
 *.log
 
 # ===== Python =====

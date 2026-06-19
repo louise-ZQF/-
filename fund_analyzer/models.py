@@ -183,6 +183,7 @@ class FundAnalysis:
     action: Action = Action.HOLD
     score: float = 0.0
     rationale: str = ""
+    history: list = field(default_factory=list)   # list[NavPoint]，供前端画净值走势
 
     @property
     def market_value(self) -> Optional[float]:

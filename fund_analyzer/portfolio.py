@@ -54,6 +54,7 @@ def analyze_fund(holding: Holding, navpoints: Sequence[NavPoint], quote: Optiona
                  index_rets: Sequence[Tuple], fx_rets: Sequence[Tuple], st: Settings) -> FundAnalysis:
     fa = FundAnalysis(holding=holding, quote=quote)
     fa.metrics = compute_metrics(holding, navpoints, quote, st)
+    fa.history = list(navpoints)
 
     # 时差估算（仅对配置了跟踪指数的 QDII）
     if holding.tracking.index and index_rets:

@@ -103,6 +103,16 @@ def cmd_estimate(args):
     return 0
 
 
+def cmd_serve(args):
+    """启动可视化网站。"""
+    from webapp.app import create_app
+    app = create_app()
+    print(f"基金分析网站已启动 →  http://{args.host}:{args.port}")
+    print("（演示模式无需配置，直接打开即可看效果；持仓在「持仓管理」页编辑）")
+    app.run(host=args.host, port=args.port, debug=False)
+    return 0
+
+
 def cmd_email_test(args):
     cfg = load_email_config()
     html = ("<h2>基金分析助手 · 邮件配置测试</h2>"
@@ -136,6 +146,11 @@ def build_parser():
 
     t = sub.add_parser("email-test", help="测试 SMTP 邮件配置")
     t.set_defaults(func=cmd_email_test)
+
+    s = sub.add_parser("serve", help="启动可视化网站")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=5000)
+    s.set_defaults(func=cmd_serve)
     return p
 
 

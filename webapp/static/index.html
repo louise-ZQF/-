@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>基金组合分析</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">📈</span>
+      <div>
+        <div class="brand-title">基金组合分析</div>
+        <div class="brand-sub" id="asOf">—</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <div class="seg" id="modeSeg">
+        <button data-mode="demo" class="seg-btn active">演示数据</button>
+        <button data-mode="live" class="seg-btn">我的持仓</button>
+      </div>
+      <button id="refreshBtn" class="btn ghost" title="刷新">↻ 刷新</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="dashboard" class="tab active">仪表盘</button>
+    <button data-tab="holdings" class="tab">持仓管理</button>
+  </nav>
+
+  <main>
+    <!-- ===================== 仪表盘 ===================== -->
+    <section id="view-dashboard" class="view active">
+      <div id="banner" class="banner hidden"></div>
+
+      <div id="overview" class="cards"></div>
+
+      <div id="highlights" class="panel hidden">
+        <div class="panel-title">📌 今日重点操作提示</div>
+        <div id="highlightList" class="highlight-list"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-title">资产分布</div>
+          <div id="allocChart" class="alloc-wrap"><div class="empty">暂无市值数据</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">市场情报</div>
+          <div id="marketBrief" class="chips"></div>
+        </div>
+      </div>
+
+      <div class="panel-title section">持仓逐只分析</div>
+      <div id="fundList" class="fund-list"><div class="loading">加载中…</div></div>
+
+      <div id="notesPanel" class="panel hidden">
+        <div class="panel-title">组合层建议</div>
+        <ul id="notesList" class="notes"></ul>
+      </div>
+
+      <p class="disclaimer">
+        本页所有指标、估算与「操作建议」均为基于公开数据与通用规则的<b>量化参考，不构成投资建议</b>。
+        时差估算为近似模型，存在误差；市场有风险，决策请独立判断、自负盈亏。
+      </p>
+    </section>
+
+    <!-- ===================== 持仓管理 ===================== -->
+    <section id="view-holdings" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">我的持仓</div>
+          <div class="panel-head-actions">
+            <button id="loadExampleBtn" class="btn ghost">载入示例</button>
+            <button id="addRowBtn" class="btn ghost">＋ 添加一只</button>
+            <button id="saveBtn" class="btn primary">保存</button>
+          </div>
+        </div>
+        <p class="hint">
+          填好基金代码即可。份额/成本留空则只做信号分析。<b>美股 QDII</b> 请填「跟踪指数」与「滞后天数」，
+          才能算时差估算；A 股基金跟踪指数留空即可。保存后到「仪表盘」切到<b>我的持仓</b>查看。
+        </p>
+        <div class="table-scroll">
+          <table id="holdingsTable" class="htable">
+            <thead>
+              <tr>
+                <th>代码*</th><th>名称</th><th>类别</th><th>份额</th><th>成本净值</th>
+                <th>目标权重</th><th>定投</th><th>跟踪指数</th><th>滞后</th><th>对冲</th><th>年费率</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="holdingsBody"></tbody>
+          </table>
+        </div>
+        <div id="saveMsg" class="save-msg"></div>
+      </div>
+      <p class="hint small">
+        提示：代码与跟踪指数对照 —— <code>^GSPC</code> 标普500 ｜ <code>^NDX</code> 纳指100 ｜
+        <code>^IXIC</code> 纳指综合 ｜ <code>^DJI</code> 道指 ｜ <code>^SOX</code> 费城半导体。
+        「滞后」是基金净值比指数晚几个交易日（美股 QDII 多为 1~2，建议校准一次）。
+      </p>
+    </section>
+  </main>
+
+  <!-- 单只基金详情弹层 -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <button id="modalClose" class="modal-close">×</button>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

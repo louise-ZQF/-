@@ -18,8 +18,21 @@
 
 ## 30 秒看效果（无需联网、无需配置）
 
+**方式一：可视化网站（推荐，简洁好操作）**
+
 ```bash
 pip install -r requirements.txt
+python -m fund_analyzer serve      # 或 python -m webapp
+# 浏览器打开 http://127.0.0.1:5000
+```
+
+打开就是「演示数据」仪表盘：组合概览、今日重点操作提示、资产分布环形图、每只基金的
+**时差估算**与净值走势、可展开的信号详情；切到「持仓管理」用表格增删改你的基金、一键保存，
+再切回「我的持仓」即看真实分析。界面见 [docs/webapp-preview.svg](docs/webapp-preview.svg)。
+
+**方式二：命令行**
+
+```bash
 python -m fund_analyzer demo
 ```
 
@@ -89,6 +102,9 @@ python -m fund_analyzer email-test   # 先发一封测试邮件，确认配置�
 ## 四、运行方式
 
 ```bash
+# 0) 启动可视化网站（推荐）
+python -m fund_analyzer serve            # http://127.0.0.1:5000
+
 # 1) 跑一次真实持仓分析（联网拉数据），生成报告到 output/
 python -m fund_analyzer report
 
@@ -165,11 +181,17 @@ fund_analyzer/
   emailer.py       SMTP 发送（QQ/163/126/Gmail）
   datasource/      数据源：天天基金（净值/估值）、美股指数行情（Yahoo/stooq）
   demo.py          离线演示数据
-  cli.py           命令行入口
+  cli.py           命令行入口（含 serve 子命令）
+webapp/            ★ 可视化网站（Flask）
+  app.py           路由 + JSON API
+  service.py       演示/实时报告、持仓读写
+  serialize.py     分析结果 → 前端 JSON
+  static/          index.html / style.css / app.js（零依赖，手写 SVG 图表）
 config/            holdings / settings 示例
-tests/             单元测试（24 个用例）
+tests/             单元测试（28 个用例）
 .github/workflows/ 每日发邮件 + 测试 CI
-docs/METHODOLOGY.md 方法论与模型说明
+docs/METHODOLOGY.md  方法论与模型说明
+docs/webapp-preview.svg  网站界面示意图
 ```
 
 ## 八、数据源与网络说明

@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="1010" viewBox="0 0 940 1010" font-family="-apple-system,'PingFang SC','Microsoft YaHei',Segoe UI,Arial,sans-serif">
+  <rect width="940" height="1010" fill="#f4f6f9"/>
+
+  <!-- 顶栏 -->
+  <rect width="940" height="56" fill="#ffffff"/>
+  <line x1="0" y1="56" x2="940" y2="56" stroke="#e6e9ee"/>
+  <text x="24" y="28" font-size="20">📈</text>
+  <text x="50" y="27" font-size="16" font-weight="700" fill="#1f2933">基金组合分析</text>
+  <text x="50" y="43" font-size="11" fill="#6b7280">基金组合每日分析报告（演示数据） · 2026-06-19 09:00</text>
+  <!-- 模式切换 -->
+  <rect x="654" y="13" width="180" height="30" rx="9" fill="#eef1f5"/>
+  <rect x="657" y="16" width="92" height="24" rx="7" fill="#ffffff"/>
+  <text x="703" y="32" font-size="12" font-weight="700" fill="#2563eb" text-anchor="middle">演示数据</text>
+  <text x="793" y="32" font-size="12" font-weight="600" fill="#6b7280" text-anchor="middle">我的持仓</text>
+  <rect x="844" y="13" width="72" height="30" rx="9" fill="#ffffff" stroke="#e6e9ee"/>
+  <text x="880" y="32" font-size="12" font-weight="600" fill="#1f2933" text-anchor="middle">↻ 刷新</text>
+
+  <!-- 标签页 -->
+  <rect x="0" y="56" width="940" height="40" fill="#ffffff"/>
+  <line x1="0" y1="96" x2="940" y2="96" stroke="#e6e9ee"/>
+  <text x="40" y="82" font-size="14" font-weight="700" fill="#2563eb">仪表盘</text>
+  <rect x="28" y="93" width="56" height="2.5" fill="#2563eb"/>
+  <text x="120" y="82" font-size="14" font-weight="600" fill="#6b7280">持仓管理</text>
+
+  <!-- 概览卡片 -->
+  <g>
+    <rect x="24" y="112" width="288" height="92" rx="14" fill="#fff"/>
+    <text x="40" y="138" font-size="12" fill="#6b7280">已公布净值市值</text>
+    <text x="40" y="170" font-size="24" font-weight="800" fill="#1f2933">¥46,195.80</text>
+    <text x="40" y="190" font-size="11" fill="#6b7280">按各基金最新公布净值</text>
+
+    <rect x="326" y="112" width="288" height="92" rx="14" fill="#fff"/>
+    <text x="342" y="138" font-size="12" fill="#6b7280">时差估算「应有」市值</text>
+    <text x="342" y="170" font-size="24" font-weight="800" fill="#1f2933">¥46,969.70</text>
+    <text x="342" y="190" font-size="11" fill="#0a7d2c" font-weight="700">今日额外涨跌 +1.68%</text>
+
+    <rect x="628" y="112" width="288" height="92" rx="14" fill="#fff"/>
+    <text x="644" y="138" font-size="12" fill="#6b7280">累计收益</text>
+    <text x="644" y="170" font-size="24" font-weight="800" fill="#0a7d2c">+11.59%</text>
+    <text x="644" y="190" font-size="11" fill="#6b7280">成本 ¥41,399.40</text>
+  </g>
+
+  <!-- 重点提示 -->
+  <rect x="24" y="220" width="892" height="116" rx="14" fill="#fff"/>
+  <text x="40" y="246" font-size="15" font-weight="700" fill="#1f2933">📌 今日重点操作提示</text>
+  <rect x="40" y="258" width="860" height="30" rx="8" fill="#fafbfc"/>
+  <rect x="40" y="258" width="3" height="30" fill="#c25e00"/>
+  <text x="54" y="277" font-size="13" fill="#1f2933"><tspan font-weight="700">（示例）纳指100指数QDII</tspan> → <tspan fill="#c25e00" font-weight="700">部分止盈/减仓</tspan>　<tspan fill="#6b7280">持仓收益 +36.0% 已达目标止盈线 30%，建议分批止盈</tspan></text>
+  <rect x="40" y="294" width="860" height="30" rx="8" fill="#fafbfc"/>
+  <rect x="40" y="294" width="3" height="30" fill="#c25e00"/>
+  <text x="54" y="313" font-size="13" fill="#1f2933"><tspan font-weight="700">（示例）标普500指数QDII</tspan> → <tspan fill="#c25e00" font-weight="700">部分止盈/减仓</tspan>　<tspan fill="#6b7280">净值处于近2年高位（分位90%），警惕高位回调风险</tspan></text>
+
+  <!-- 资产分布 + 市场情报 -->
+  <rect x="24" y="352" width="436" height="168" rx="14" fill="#fff"/>
+  <text x="40" y="378" font-size="15" font-weight="700" fill="#1f2933">资产分布</text>
+  <!-- 环形图：美股74% / A股26% -->
+  <g transform="translate(108,448)">
+    <circle r="46" fill="none" stroke="#2563eb" stroke-width="24" stroke-dasharray="213.8 75.1" transform="rotate(-90)"/>
+    <circle r="46" fill="none" stroke="#16a34a" stroke-width="24" stroke-dasharray="75.1 213.8" stroke-dashoffset="-213.8" transform="rotate(-90)"/>
+    <circle r="33" fill="#fff"/>
+  </g>
+  <g font-size="13">
+    <rect x="196" y="404" width="10" height="10" rx="3" fill="#2563eb"/>
+    <text x="214" y="413" fill="#6b7280">美股</text><text x="430" y="413" fill="#1f2933" font-weight="700" text-anchor="end">74%</text>
+    <rect x="196" y="430" width="10" height="10" rx="3" fill="#16a34a"/>
+    <text x="214" y="439" fill="#6b7280">A股</text><text x="430" y="439" fill="#1f2933" font-weight="700" text-anchor="end">26%</text>
+  </g>
+
+  <rect x="472" y="352" width="444" height="168" rx="14" fill="#fff"/>
+  <text x="488" y="378" font-size="15" font-weight="700" fill="#1f2933">市场情报</text>
+  <g font-size="12">
+    <rect x="488" y="394" width="138" height="26" rx="13" fill="#f1f4f8"/><text x="500" y="411" fill="#374151">纳指100 +1.10%</text>
+    <rect x="634" y="394" width="138" height="26" rx="13" fill="#f1f4f8"/><text x="646" y="411" fill="#374151">标普500 +0.90%</text>
+    <rect x="488" y="428" width="110" height="26" rx="13" fill="#f1f4f8"/><text x="500" y="445" fill="#374151">道指 +0.45%</text>
+    <rect x="606" y="428" width="190" height="26" rx="13" fill="#f1f4f8"/><text x="618" y="445" fill="#374151">美元兑人民币 +0.20%</text>
+    <rect x="488" y="462" width="148" height="26" rx="13" fill="#f1f4f8"/><text x="500" y="479" fill="#9aa3af">（演示数据，非真实）</text>
+  </g>
+
+  <!-- 区块标题 -->
+  <text x="26" y="552" font-size="15" font-weight="700" fill="#1f2933">持仓逐只分析</text>
+
+  <!-- 基金卡片：纳指100 -->
+  <rect x="24" y="566" width="892" height="232" rx="14" fill="#fff"/>
+  <text x="40" y="594" font-size="15" font-weight="700" fill="#1f2933">（示例）纳指100指数QDII</text>
+  <text x="232" y="594" font-size="12" fill="#6b7280">270042 · 美股</text>
+  <rect x="788" y="580" width="112" height="24" rx="12" fill="#c25e00"/>
+  <text x="844" y="596" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">部分止盈/减仓</text>
+  <!-- 行 -->
+  <text x="40" y="624" font-size="13" fill="#1f2933">最新净值 <tspan font-weight="700">1.8012</tspan></text>
+  <text x="180" y="624" font-size="13" fill="#1f2933">持仓收益 <tspan fill="#0a7d2c" font-weight="700">+36.00%</tspan></text>
+  <text x="330" y="624" font-size="13" fill="#6b7280">信号分 -2.5</text>
+  <!-- 时差估算框 -->
+  <rect x="40" y="636" width="860" height="40" rx="10" fill="#f0f7ff" stroke="#dbeafe"/>
+  <text x="54" y="661" font-size="13" fill="#1e40af">⏱ 时差估算：未体现涨跌累计 <tspan font-size="16" font-weight="800">+2.95%</tspan> <tspan fill="#6b7280">(±1.65%)</tspan>　应有净值 ≈ <tspan font-weight="700">1.8543</tspan>　<tspan fill="#6b7280" font-size="12">[固定beta=1 · ^NDX · 滞后2日]</tspan></text>
+  <!-- 指标网格 -->
+  <g font-size="12">
+    <text x="40"  y="704" fill="#6b7280">近1周</text><text x="40"  y="722" fill="#0a7d2c" font-weight="700">+17.2%</text>
+    <text x="260" y="704" fill="#6b7280">近1月</text><text x="260" y="722" fill="#0a7d2c" font-weight="700">+26.2%</text>
+    <text x="480" y="704" fill="#6b7280">近3月</text><text x="480" y="722" fill="#0a7d2c" font-weight="700">+58.7%</text>
+    <text x="700" y="704" fill="#6b7280">近1年</text><text x="700" y="722" fill="#0a7d2c" font-weight="700">+109.7%</text>
+    <text x="40"  y="746" fill="#6b7280">RSI</text><text x="40"  y="764" fill="#1f2933" font-weight="700">82</text>
+    <text x="260" y="746" fill="#6b7280">最大回撤</text><text x="260" y="764" fill="#c0392b" font-weight="700">-14.0%</text>
+    <text x="480" y="746" fill="#6b7280">年化波动</text><text x="480" y="764" fill="#1f2933" font-weight="700">27.0%</text>
+    <text x="700" y="746" fill="#6b7280">净值分位</text><text x="700" y="764" fill="#1f2933" font-weight="700">99%</text>
+  </g>
+  <!-- 走势 sparkline（上行，绿） -->
+  <polyline points="40,790 140,786 240,780 340,778 440,770 540,760 640,752 740,740 840,726 900,718" fill="none" stroke="#0a7d2c" stroke-width="1.8"/>
+
+  <!-- 基金卡片：沪深300（加大定投，绿徽章）压缩展示 -->
+  <rect x="24" y="812" width="892" height="118" rx="14" fill="#fff"/>
+  <text x="40" y="840" font-size="15" font-weight="700" fill="#1f2933">（示例）沪深300指数</text>
+  <text x="206" y="840" font-size="12" fill="#6b7280">110020 · A股</text>
+  <rect x="752" y="826" width="148" height="24" rx="12" fill="#0a7d2c"/>
+  <text x="826" y="842" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">加大定投/分批买入</text>
+  <text x="40" y="870" font-size="13" fill="#1f2933">最新净值 <tspan font-weight="700">1.0881</tspan></text>
+  <text x="180" y="870" font-size="13" fill="#1f2933">持仓收益 <tspan fill="#c0392b" font-weight="700">-17.57%</tspan></text>
+  <text x="330" y="870" font-size="13" fill="#6b7280">信号分 +1.5</text>
+  <g font-size="12">
+    <text x="40" y="900" fill="#6b7280">净值分位</text><text x="40" y="918" fill="#0a7d2c" font-weight="700">2%（近2年低位）</text>
+    <text x="300" y="900" fill="#6b7280">RSI</text><text x="300" y="918" fill="#0a7d2c" font-weight="700">29（超卖）</text>
+    <text x="520" y="900" fill="#6b7280">最大回撤</text><text x="520" y="918" fill="#c0392b" font-weight="700">-26.3%</text>
+  </g>
+  <polyline points="40,915 160,905 280,908 400,912 520,914 640,910 720,906 800,902 900,898" fill="none" stroke="#c0392b" stroke-width="1.6" opacity="0.7"/>
+
+  <!-- 免责 -->
+  <text x="24" y="958" font-size="11" fill="#9aa3af">量化参考，不构成投资建议；时差估算为近似模型，存在误差。市场有风险，决策请独立判断、自负盈亏。</text>
+  <text x="24" y="984" font-size="10" fill="#c2c8d0">（这是界面示意图 docs/webapp-preview.svg；真实页面由 python -m fund_analyzer serve 启动，数据实时计算）</text>
+</svg>
