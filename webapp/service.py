@@ -74,6 +74,13 @@ def build_live_json(holdings_path_override: Optional[str] = None) -> dict:
     result = report_to_dict(rep, settings.report_title, "live")
     if indicators:
         result["market_indicators"] = indicators
+
+    # 自动保存每日快照
+    tv = result["overview"].get("total_value") or 0
+    tc = result["overview"].get("total_cost") or 0
+    invested = sum(float(h.get("current_value", 0) or 0) for h in holdings)
+    save_daily_snapshot(tv, tc, invested, len(holdings))
+
     return result
 
 
@@ -368,6 +375,132 @@ def generate_alerts(funds_raw: List[dict]) -> list:
             factor_data[h.code] = compute_factor_scores(navs)
 
     return gen_alerts(fas, factor_data, settings)
+
+
+# ---------------------------------------------------------------------------
+# XIRR 真实收益
+# ---------------------------------------------------------------------------
+
+def compute_xirr() -> dict:
+    """计算投资组合 XIRR 真实年化收益。"""
+    from fund_analyzer.xirr import (
+        load_transactions, auto_dca_transactions, compute_xirr as calc_xirr,
+    )
+    from datetime import date
+
+    holdings = read_holdings_raw()
+    if not holdings:
+        return {"error": "请先保存持仓"}
+
+    # 加载交易记录 + 从定投计划自动生成
+    txs = load_transactions()
+    if not txs:
+        txs = auto_dca_transactions(holdings)
+
+    # 计算当前总市值
+    from fund_analyzer.config import load_settings
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    settings = load_settings(DEFAULT_SETTINGS)
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=settings.datasource.cache_ttl_minutes,
+        timeout=settings.datasource.request_timeout,
+    )
+    em = EastMoney(http)
+    total_value = 0.0
+    for h in holdings:
+        cv = float(h.get("current_value", 0) or 0)
+        if cv <= 0 and h.get("shares"):
+            q = em.realtime(str(h.get("code", "")))
+            cv = float(h.get("shares", 0)) * (q.nav if q and q.nav else 1)
+        total_value += cv
+
+    result = calc_xirr(txs, total_value, date.today())
+
+    return {
+        "xirr": round(result.xirr * 100, 2),        # 百分比
+        "total_invested": round(result.total_invested, 2),
+        "total_return": round(result.total_return, 2),
+        "return_pct": round(result.return_pct * 100, 2),
+        "annualized": round(result.annualized_return * 100, 2),
+        "years": round(result.years, 2),
+        "transactions_count": len(txs),
+    }
+
+
+# ---------------------------------------------------------------------------
+# 收益曲线
+# ---------------------------------------------------------------------------
+
+def get_return_curve(days: int = 90) -> List[dict]:
+    """获取收益曲线数据。"""
+    from fund_analyzer.snapshot import load_snapshots
+    return load_snapshots(days)
+
+
+def save_daily_snapshot(total_value: float, total_cost: float, total_invested: float,
+                        fund_count: int):
+    """保存每日快照（供报告流程调用）。"""
+    try:
+        from fund_analyzer.snapshot import save_snapshot
+        save_snapshot(total_value, total_cost, total_invested, fund_count)
+    except Exception:
+        pass  # 快照失败不影响主流程
+
+
+# ---------------------------------------------------------------------------
+# 真实 PE/PB 估值
+# ---------------------------------------------------------------------------
+
+def get_valuation(code: str) -> dict:
+    """获取基金真实 PE/PB 估值分位（来自天天基金）。"""
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.config import load_settings
+    import re, json
+
+    settings = load_settings(DEFAULT_SETTINGS)
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=120,  # 估值数据变化慢
+        timeout=settings.datasource.request_timeout,
+    )
+
+    # 从天天基金 fundf10 页面抓 PE/PB 数据
+    url = f"http://fund.eastmoney.com/f10/tsdata_{code}.html"
+    text = http.get(url, cache_key=f"valuation:{code}",
+                    headers={"Referer": "http://fund.eastmoney.com/"})
+    if not text:
+        return {"code": code, "error": "获取估值数据失败"}
+
+    pe_data = _extract_valuation(text, "市盈率")
+    pb_data = _extract_valuation(text, "市净率")
+
+    return {
+        "code": code,
+        "pe_current": pe_data.get("current"),
+        "pe_percentile": pe_data.get("percentile"),
+        "pe_high": pe_data.get("high"),
+        "pe_low": pe_data.get("low"),
+        "pb_current": pb_data.get("current"),
+        "pb_percentile": pb_data.get("percentile"),
+        "note": "数据来自天天基金，仅供参考",
+    }
+
+
+def _extract_valuation(html: str, label: str) -> dict:
+    """从天天基金页面提取估值数据。"""
+    import re
+    # 搜索包含 label 的 JSON 数据块
+    pattern = rf'{label}.*?"current":\s*([\d.]+).*?"percentile":\s*([\d.]+)'
+    m = re.search(pattern, html, re.DOTALL)
+    if m:
+        return {
+            "current": float(m.group(1)),
+            "percentile": float(m.group(2)),
+        }
+    return {}
 
 
 def save_holdings(holdings: List[dict], path: Optional[str] = None) -> int:

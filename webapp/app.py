@@ -215,4 +215,55 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    # ---- XIRR 真实收益 ----
+
+    @app.get("/api/xirr")
+    def xirr():
+        """计算投资组合 XIRR 真实年化收益。"""
+        try:
+            result = service.compute_xirr()
+            return jsonify({"ok": True, **result})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    # ---- 收益曲线 ----
+
+    @app.get("/api/snapshot/curve")
+    def snapshot_curve():
+        """获取收益曲线数据。?days=90"""
+        days = request.args.get("days", 90, type=int)
+        try:
+            data = service.get_return_curve(days)
+            return jsonify({"ok": True, "curve": data})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    # ---- 真实估值 ----
+
+    @app.get("/api/valuation/<code>")
+    def valuation(code):
+        """获取基金真实 PE/PB 估值分位。"""
+        try:
+            data = service.get_valuation(code)
+            return jsonify({"ok": True, **data})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    # ---- PWA manifest ----
+
+    @app.get("/manifest.json")
+    def manifest():
+        return jsonify({
+            "name": "基金组合分析",
+            "short_name": "基金分析",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#f4f6f9",
+            "theme_color": "#2563eb",
+            "icons": [{"src": "/static/icon.svg", "sizes": "192x192", "type": "image/svg+xml"}],
+        })
+
     return app

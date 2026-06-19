@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="基金分析">
+  <link rel="manifest" href="/manifest.json">
   <title>基金组合分析</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -33,6 +37,12 @@
       <div id="banner" class="banner hidden"></div>
 
       <div id="overview" class="cards"></div>
+
+      <!-- 收益曲线 -->
+      <div id="curvePanel" class="panel hidden">
+        <div class="panel-title">📊 累计收益曲线 <span id="curveLabel" style="font-size:12px;font-weight:400;color:var(--muted)"></span></div>
+        <div id="curveSVG"></div>
+      </div>
 
       <div id="highlights" class="panel hidden">
         <div class="panel-title">📌 今日重点操作提示</div>
