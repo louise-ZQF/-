@@ -331,7 +331,7 @@ def search_news_for_fund(name: str, keywords: List[str] = None) -> List[str]:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read().decode("utf-8", errors="replace")
             titles = re.findall(r'<title>(.+?)</title>', data)
-            return [t for t in titles if t and "Bing" not in t][:5]
+            return [t for t in titles if t and "Bing" not in t and "必应" not in t and "Microsoft" not in t][:5]
     except Exception as e:
         print(f"[news] 搜索 {name} 新闻失败: {e}")
         return []
@@ -356,7 +356,7 @@ def search_institutional_views(funds: List) -> List[str]:
                     data = resp.read().decode("utf-8", errors="replace")
                     titles = re.findall(r'<title>(.+?)</title>', data)
                     for t in titles:
-                        if t and "Bing" not in t and len(t) > 10:
+                        if t and "Bing" not in t and "必应" not in t and "Microsoft" not in t and len(t) > 10:
                             views.append(f"[{source}] {t}")
             except Exception:
                 continue
@@ -387,7 +387,7 @@ def search_macro_events() -> List[str]:
                 data = resp.read().decode("utf-8", errors="replace")
                 titles = re.findall(r'<title>(.+?)</title>', data)
                 for t in titles:
-                    if t and "Bing" not in t and len(t) > 15:
+                    if t and "Bing" not in t and "必应" not in t and "Microsoft" not in t and len(t) > 15:
                         events.append(f"📅 {t}")
         except Exception:
             continue
