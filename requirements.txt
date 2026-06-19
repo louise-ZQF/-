@@ -1,5 +1,10 @@
-# 运行依赖（刻意保持精简，均为纯 Python 友好，无需 numpy/pandas 编译）
+# 运行依赖
 requests>=2.28
 PyYAML>=6.0
 Jinja2>=3.1
 Flask>=3.0          # 可视化网站（python -m fund_analyzer serve）
+# 导入增强
+Pillow>=10.0        # OCR 图片处理
+pytesseract>=0.3.10 # OCR 识别（需系统安装 tesseract-ocr）
+# AI 分析
+openai>=1.0         # DeepSeek API 兼容 OpenAI SDK

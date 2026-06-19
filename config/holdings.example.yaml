@@ -9,12 +9,17 @@
 #   name           基金名称（可留空，程序会自动从天天基金抓取）。
 #   asset_class    资产大类，用于组合分布与再平衡：
 #                  us_equity / cn_equity / hk_equity / global_equity / commodity / bond / cash / other
+#   current_value  当前仓位金额（元）。用于快速导入，程序会自动推算份额/成本。
 #   shares         持有份额。只想做信号分析、不算市值可填 0。
 #   cost_nav       持仓平均成本（单位净值口径）。用于算持仓收益与止盈/止损。
 #   target_weight  目标权重（0~1 的小数）。填了才会做再平衡提醒；所有基金加起来建议≈1。
 #   is_dca         是否正在定投（true/false）。影响「继续/暂停/加大定投」类建议。
 #   annual_fee     年综合费率（管理费+托管费，小数，如 0.008=0.8%）。用于时差估算的费用拖累。
 #   note           备注（可留空）。
+#   dca_plan:      定投计划（如有）
+#     frequency     定投频率：daily | weekly | monthly
+#     amount        每期定投金额（元）
+#     enabled       是否启用（true/false）
 #
 #   tracking:      ★ QDII / 指数基金的「跟踪标的」——时差估算的关键 ★
 #     index          跟踪的指数行情代码（见下方对照）。A 股普通基金留空即可（不做时差估算）。
@@ -33,11 +38,16 @@ holdings:
   - code: "270042"
     name: "广发纳斯达克100指数(QDII)"   # 示例，请核对
     asset_class: us_equity
+    current_value: 50000             # ★ 当前仓位金额（元），可用于快速导入
     shares: 0
     cost_nav: 0
     target_weight: 0.45
     is_dca: true
     annual_fee: 0.008
+    dca_plan:                        # ★ 定投计划
+      frequency: "daily"             # daily | weekly | monthly
+      amount: 100                    # 每期金额（元）
+      enabled: true
     tracking:
       index: "^NDX"
       beta: 1.0
@@ -47,11 +57,16 @@ holdings:
   - code: "050025"
     name: "博时标普500ETF联接(QDII)"     # 示例，请核对
     asset_class: us_equity
+    current_value: 30000
     shares: 0
     cost_nav: 0
     target_weight: 0.30
     is_dca: true
     annual_fee: 0.006
+    dca_plan:
+      frequency: "daily"
+      amount: 100
+      enabled: true
     tracking:
       index: "^GSPC"
       beta: 0.98
@@ -62,10 +77,15 @@ holdings:
   - code: "110020"
     name: "易方达沪深300ETF联接"          # 示例，请核对
     asset_class: cn_equity
+    current_value: 20000
     shares: 0
     cost_nav: 0
     target_weight: 0.25
     is_dca: true
     annual_fee: 0.005
+    dca_plan:
+      frequency: "weekly"
+      amount: 500
+      enabled: true
     tracking:
       index:            # A 股基金留空 → 不做时差估算（净值当天/次日即更新）
