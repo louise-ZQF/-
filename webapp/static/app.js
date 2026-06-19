@@ -103,18 +103,9 @@ function renderDashboard(d){
     cards.appendChild(cardEl('提示','仅信号分析','未填份额/成本，补全后可看市值与收益'));
   }
 
-  // 重点提示
+  // 重点提示 — 由 AI 分析填充，不再使用机械信号
   const hp=$('#highlights'), hl=$('#highlightList');
-  if(d.highlights && d.highlights.length){
-    hp.classList.remove('hidden'); hl.innerHTML='';
-    d.highlights.forEach(f=>{
-      const div=document.createElement('div'); div.className='hl';
-      div.style.borderLeftColor = `var(--${f.action_kind})`;
-      div.innerHTML = `<div><b>${esc(f.name)}</b> → <b style="color:var(--${f.action_kind})">${esc(f.action)}</b>
-        <div class="hl-reason">${esc(f.rationale)}</div></div>`;
-      hl.appendChild(div);
-    });
-  }else hp.classList.add('hidden');
+  hp.classList.add('hidden');
 
   // 市场体温计
   if(d.market_indicators && d.market_indicators.length){
@@ -234,7 +225,7 @@ function fundCard(f, idx){
     <div class="fund-head">
       <span class="fund-name">${esc(f.name)}</span>
       <span class="fund-code">${esc(f.code)} · ${esc(ASSET_LABELS[f.asset_class]||f.asset_class)}</span>
-      <span class="badge ${f.action_kind}">${esc(f.action)}</span>
+      <span class="badge hold">分析中…</span>
     </div>
     <div class="fund-line">
       <span>最新净值 <span class="num">${num(m.last_nav)}</span></span>
@@ -502,48 +493,35 @@ async function runAiAnalysis(){
       }).join('');
       tagsEl.innerHTML=tags;
 
-      // 基金卡片：AI 判断与机械信号并列展示
+      // AI 结果更新基金卡片：用 AI 建议替换机械 badge
       Object.entries(d.funds).forEach(([code,s])=>{
         $$('.fund').forEach(card=>{
           const codeEl=card.querySelector('.fund-code');
           if(codeEl && codeEl.textContent.includes(code)){
-            const cls=s.sentiment==='看好'||s.sentiment==='强烈看好'?'ai-bullish':(s.sentiment==='谨慎'||s.sentiment==='规避'?'ai-bearish':'ai-neutral');
-            const icon=s.sentiment==='看好'||s.sentiment==='强烈看好'?'🟢':(s.sentiment==='谨慎'||s.sentiment==='规避'?'🔴':'🟡');
-            // 加 AI badge（不覆盖机械信号）
-            const existAi=card.querySelector('.ai-badge');
-            if(existAi) existAi.remove();
-            const head=card.querySelector('.fund-head');
-            const aiBadge=document.createElement('span');
-            aiBadge.className='ai-badge '+cls;
-            aiBadge.textContent=icon+' AI: '+s.sentiment;
-            head.appendChild(aiBadge);
-            // 高亮分歧
-            const mechBadge=card.querySelector('.badge');
-            const mechAction=mechBadge?.textContent||'';
-            const aiSug=s.suggestion||'';
-            const disagree=(mechAction.includes('暂停')||mechAction.includes('减仓')||mechAction.includes('卖出')) && (aiSug.includes('加大')||aiSug.includes('继续'));
-            if(disagree && mechBadge){
-              mechBadge.style.border='2px dashed #f59e0b';
-              mechBadge.title='AI 与机械信号存在分歧';
+            // 替换机械 badge 为 AI 建议
+            const badge=card.querySelector('.badge');
+            if(badge){
+              badge.textContent=s.suggestion||s.sentiment;
+              const isBull=s.sentiment==='看好'||s.sentiment==='强烈看好';
+              const isBear=s.sentiment==='谨慎'||s.sentiment==='规避';
+              badge.className='badge '+(isBull?'hold_pos':(isBear?'trim':'hold'));
             }
           }
         });
       });
 
-      // 用 AI 结果替换重点提示
+      // AI 结果驱动重点提示
       const hp=$('#highlights'), hl=$('#highlightList');
-      if(bullish.length>0 || bearish.length>0){
-        hp.classList.remove('hidden'); hl.innerHTML='';
-        const all=[...bullish.map(x=>({...x, kind:'bullish'})), ...bearish.map(x=>({...x, kind:'bearish'})), ...neutral.map(x=>({...x, kind:'neutral'}))];
-        all.forEach(x=>{
-          const div=document.createElement('div'); div.className='hl';
-          const borderColor=x.kind==='bullish'?'#16a34a':(x.kind==='bearish'?'#dc2626':'#6b7280');
-          div.style.borderLeftColor=borderColor;
-          div.innerHTML=`<div><b>${esc(nameMap[x.code]||x.code)}</b> → <b style="color:${borderColor}">${esc(x.s.sentiment)}</b>
-            <div class="hl-reason">${esc(x.s.reason||'')} — ${esc(x.s.suggestion||'')}</div></div>`;
-          hl.appendChild(div);
-        });
-      }
+      hp.classList.remove('hidden'); hl.innerHTML='';
+      const all=[...bullish.map(x=>({...x,kind:'bullish'})),...bearish.map(x=>({...x,kind:'bearish'}))];
+      all.forEach(x=>{
+        const div=document.createElement('div'); div.className='hl';
+        const color=x.kind==='bullish'?'#16a34a':'#dc2626';
+        div.style.borderLeftColor=color;
+        div.innerHTML=`<div><b>${esc(nameMap[x.code]||x.code)}</b> → <b style="color:${color}">${esc(x.s.sentiment)}: ${esc(x.s.suggestion)}</b>
+          <div class="hl-reason">${esc(x.s.reason||'')}</div></div>`;
+        hl.appendChild(div);
+      });
     }
 
     // 新闻 feed
