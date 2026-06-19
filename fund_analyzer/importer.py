@@ -119,19 +119,36 @@ def search_fund(code: str, em) -> Optional[FundInfo]:
 # 批量导入：解析 "代码 金额" 行
 # ---------------------------------------------------------------------------
 
-def parse_code_amount_line(line: str) -> Optional[Tuple[str, float]]:
-    """解析 "270042 50000" 或 "270042\t50000.5" 格式的一行。"""
+def parse_code_amount_line(line: str) -> Optional[Tuple[str, float, float]]:
+    """解析 "270042 50000 100" 或 "270042 50000" 格式的一行。
+
+    返回 (code, amount, dca_daily_amount)。第三列可选。
+    """
     line = line.strip()
     if not line:
         return None
-    m = re.match(r'(\d{6})\s+([\d.]+)', line)
+    parts = line.split()
+    if len(parts) < 2:
+        return None
+    m = re.match(r'(\d{6})', parts[0])
     if not m:
         return None
-    return m.group(1), float(m.group(2))
+    code = m.group(1)
+    try:
+        amount = float(parts[1])
+    except ValueError:
+        return None
+    dca = 0.0
+    if len(parts) >= 3:
+        try:
+            dca = float(parts[2])
+        except ValueError:
+            dca = 0.0
+    return code, amount, dca
 
 
-def parse_batch_text(text: str) -> List[Tuple[str, float]]:
-    """解析多行批量文本，返回 [(code, amount), ...]。"""
+def parse_batch_text(text: str) -> List[Tuple[str, float, float]]:
+    """解析多行批量文本，返回 [(code, amount, daily_dca), ...]。"""
     results = []
     for line in text.strip().splitlines():
         parsed = parse_code_amount_line(line)

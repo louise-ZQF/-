@@ -117,16 +117,20 @@ def create_app() -> Flask:
         body = request.get_json(silent=True) or {}
         text = body.get("text", "")
         if not text.strip():
-            return jsonify({"error": "请提供批量导入文本（每行: 代码 金额）"}), 400
+            return jsonify({"error": "请提供批量导入文本（每行: 代码 金额 每日定投额）"}), 400
         from fund_analyzer.importer import parse_batch_text
         pairs = parse_batch_text(text)
         if not pairs:
-            return jsonify({"error": "未识别到有效的基金代码和金额，格式：代码 金额（空格分隔）"}), 400
+            return jsonify({"error": "未识别到有效的基金代码和金额，格式：代码 金额 每日定投额（空格分隔）"}), 400
         codes = [p[0] for p in pairs]
         amount_map = {p[0]: p[1] for p in pairs}
+        dca_map = {p[0]: p[2] for p in pairs if p[2] > 0}
         funds = service.batch_auto_fill(codes)
         for f in funds:
             f["current_value"] = amount_map.get(f["code"], 0)
+            f["is_dca"] = True
+            if f["code"] in dca_map:
+                f["dca_plan"] = {"frequency": "daily", "amount": dca_map[f["code"]], "enabled": True}
         return jsonify({"ok": True, "funds": funds, "count": len(funds)})
 
     @app.get("/api/fund/search")
