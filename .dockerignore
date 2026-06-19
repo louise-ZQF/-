@@ -1,0 +1,15 @@
+.git
+.github
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+output/
+data/
+.venv/
+venv/
+config/holdings.yaml
+config/settings.yaml
+*.log
+docs/*.svg
