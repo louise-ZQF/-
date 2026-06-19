@@ -25,7 +25,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: 安装依赖
+      - name: 安装系统依赖（OCR）
+        run: sudo apt-get update && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-chi-sim
+
+      - name: 安装 Python 依赖
         run: pip install -r requirements.txt
 
       - name: 写入持仓（来自 Secret，可选）
@@ -53,6 +56,48 @@ jobs:
           SEND_EMAIL: ${{ github.event.inputs.send_email || 'true' }}
         run: |
           python -m fund_analyzer report || python -m fund_analyzer demo --email
+
+      - name: AI 智能分析（DeepSeek）
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          python3 -c "
+          import os, json
+          from fund_analyzer.config import load_settings, load_holdings
+          from fund_analyzer.portfolio import Analyzer
+          from fund_analyzer.ai_analyst import ai_analyze_portfolio, search_news_for_fund
+
+          settings = load_settings('config/settings.yaml')
+          holdings = load_holdings('config/holdings.yaml')
+          if not holdings:
+              print('无持仓数据，跳过 AI 分析')
+              exit(0)
+
+          rep = Analyzer(settings).run(holdings)
+          total = rep.total_value or 0
+
+          news = {}
+          for fa in rep.funds:
+              n = search_news_for_fund(fa.holding.name)
+              if n:
+                  news[fa.holding.code] = n
+
+          result = ai_analyze_portfolio(rep.funds, news, total)
+
+          os.makedirs('output', exist_ok=True)
+          ai_report = {
+              'as_of': rep.as_of.isoformat(),
+              'portfolio_analysis': result.portfolio_analysis,
+              'sector_bias': result.sector_bias,
+              'macro_note': result.macro_note,
+              'funds': {code: {'sentiment': s.sentiment, 'reason': s.reason, 'suggestion': s.suggestion}
+                        for code, s in result.funds.items()},
+              'dca_adjustments': result.dca_adjustments,
+          }
+          with open('output/ai_analysis.json', 'w') as f:
+              json.dump(ai_report, f, ensure_ascii=False, indent=2)
+          print('AI 分析完成，保存到 output/ai_analysis.json')
+          "
 
       - name: 上传报告产物
         if: always()
