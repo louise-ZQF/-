@@ -8,8 +8,8 @@ from typing import Dict, List, Optional
 # 规模阈值（同类 20% 分位以下警告，5000万以下严格过滤）
 _MIN_SIZE_WARN_PCT = 0.20   # 同类 20% 分位
 _MIN_SIZE_STRICT = 50000000  # 5000万（严格过滤）
-_MIN_HISTORY_PASSIVE = 2     # 被动基金最少 2 年
-_MIN_HISTORY_ACTIVE = 3      # 主动基金最少 3 年
+_MIN_HISTORY_PASSIVE = 0.5   # 被动基金最少 0.5 年（~126 交易日）
+_MIN_HISTORY_ACTIVE = 1      # 主动基金最少 1 年（~252 交易日，受限于 API 分页）
 _MIN_MANAGER_TENURE = 1      # 基金经理最少任职 1 年
 
 
