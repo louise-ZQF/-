@@ -174,4 +174,45 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    # ---- 基金筛选 ----
+
+    @app.get("/api/screener/<category>")
+    def screener(category):
+        """筛选基金: ?category=us-qdii|a-stock"""
+        valid = {"us-qdii": "us_qdii", "a-stock": "a_stock"}
+        cat = valid.get(category)
+        if not cat:
+            return jsonify({"error": "请指定 category=us-qdii 或 a-stock"}), 400
+        try:
+            results = service.run_screener(cat)
+            return jsonify({"ok": True, "funds": [
+                {"code": f.code, "name": f.name, "fund_type": f.fund_type,
+                 "ret_1y": f.ret_1y, "ret_3y": f.ret_3y, "sharpe": f.sharpe,
+                 "max_dd": f.max_dd, "vol_annual": f.vol_annual,
+                 "factor_score": f.factor_score, "recommendation": f.recommendation}
+                for f in results
+            ], "count": len(results)})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    # ---- 智能提醒 ----
+
+    @app.get("/api/alerts")
+    def alerts():
+        """持仓智能提醒。"""
+        try:
+            holdings = service.read_holdings_raw()
+            if not holdings:
+                return jsonify({"error": "请先保存持仓"}), 400
+            result = service.generate_alerts(holdings)
+            return jsonify({"ok": True, "alerts": [
+                {"code": a.code, "name": a.name, "alert_type": a.alert_type,
+                 "level": a.level, "message": a.message, "action": a.action}
+                for a in result
+            ]})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
     return app

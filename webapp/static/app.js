@@ -46,6 +46,7 @@ function init(){
   const sad=$('#setAllDailyBtn'); if(sad) sad.addEventListener('click', setAllDaily);
   const aab=$('#aiAnalyzeBtn'); if(aab) aab.addEventListener('click', runAiAnalysis);
   loadReport();
+  loadAlerts();
 }
 
 function setTab(tab){
@@ -607,6 +608,70 @@ function renderWatchlist(results){
       </div>
     </div>`;
   }).join('');
+}
+
+// ---------- 基金筛选 ----------
+let scrCategory='us-qdii';
+$$('.scr-cat').forEach(b=>b.addEventListener('click',()=>{scrCategory=b.dataset.scr;$$('.scr-cat').forEach(x=>x.classList.toggle('active',x===b));}));
+$('#scrRunBtn')?.addEventListener('click', runScreener);
+
+async function runScreener(){
+  $('#scrStatus').textContent='筛选中…'; $('#scrResults').innerHTML='<div class="loading">正在从天天基金拉数据+计算量化因子…</div>';
+  try{
+    const r=await fetch('/api/screener/'+scrCategory);
+    const d=await r.json();
+    if(d.error){ $('#scrStatus').textContent=d.error; return; }
+    $('#scrStatus').textContent=`筛选完成，共 ${d.count} 只基金`;
+    renderScreener(d.funds||[]);
+  }catch(e){ $('#scrStatus').textContent='筛选失败: '+e.message; }
+}
+
+function renderScreener(funds){
+  const el=$('#scrResults');
+  const recColors={强烈推荐:'#16a34a', 推荐:'#2563eb', 关注:'#f59e0b', 观望:'#6b7280'};
+  el.innerHTML=funds.map((f,i)=>{
+    const rc=recColors[f.recommendation]||'#6b7280';
+    return `<div class="wl-card">
+      <div class="wl-head">
+        <span class="scr-rank">#${i+1}</span>
+        <span class="wl-name">${esc(f.name)}</span>
+        <span class="wl-code">${esc(f.code)} · ${esc(f.fund_type)}</span>
+        <span class="wl-judgment" style="background:${rc}">${esc(f.recommendation)}</span>
+      </div>
+      <div class="wl-metrics">
+        <span>近1年 ${(f.ret_1y*100).toFixed(1)}%</span>
+        <span>近3年 ${(f.ret_3y*100).toFixed(1)}%</span>
+        <span>夏普 ${f.sharpe}</span>
+        <span>最大回撤 ${(f.max_dd*100).toFixed(1)}%</span>
+        <span>年化波动 ${(f.vol_annual*100).toFixed(1)}%</span>
+        <span><b>因子 ${f.factor_score}</b></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ---------- 智能提醒 ----------
+$('#alertsRefreshBtn')?.addEventListener('click', loadAlerts);
+function loadAlerts(){
+  fetch('/api/alerts').then(r=>r.json()).then(d=>{
+    const panel=$('#alertsPanel');
+    if(d.error || !d.alerts || !d.alerts.length){
+      if(panel) panel.classList.add('hidden');
+      return;
+    }
+    if(panel) panel.classList.remove('hidden');
+    const list=$('#alertsList');
+    list.innerHTML=d.alerts.map(a=>{
+      const bg=a.level==='🔴'?'#fef2f2':(a.level==='🟡'?'#fffbeb':'#f0fdf4');
+      return `<div class="alert-item" style="background:${bg}">
+        <span class="alert-level">${a.level}</span>
+        <div class="alert-body">
+          <div class="alert-title">${esc(a.name)} — ${esc(a.message)}</div>
+          <div class="alert-action">→ ${esc(a.action)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }).catch(()=>{});
 }
 
 document.addEventListener('DOMContentLoaded', init);
