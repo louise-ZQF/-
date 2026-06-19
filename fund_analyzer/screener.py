@@ -156,7 +156,7 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
         fc = classify_fund(c["code"], c["name"])
 
         # 拉净值
-        navpoints = em.history(c["code"], size=200)
+        navpoints = em.history(c["code"], size=300)  # ~300 交易日 ≈ 1.2年
         if len(navpoints) < 40:
             continue
         navs = [p.nav for p in navpoints if p.nav]
@@ -191,7 +191,7 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             "fund_size": 1e8,  # placeholder
             "benchmark_code": fc.benchmark_code,
             "is_passive": fc.fund_type == "passive_index",
-            "inception_date": str(navpoints[-1].d) if len(navpoints) > 1 else str(date.today()),
+            "inception_date": str(navpoints[0].d) if navpoints else str(date.today()),
             "nav_days": len(navpoints),
             "expected_days": 200,
             "purchase_status": "open",
