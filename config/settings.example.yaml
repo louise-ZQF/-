@@ -1,0 +1,36 @@
+# ============================================================================
+# 全局设置示例 —— 可选。复制为 config/settings.yaml 后按需覆盖默认值。
+#   cp config/settings.example.yaml config/settings.yaml
+# 不创建该文件时，程序使用内置默认值（见 fund_analyzer/config.py）。
+# ============================================================================
+
+base_currency: CNY
+report_title: 基金组合每日分析报告
+
+# —— 策略阈值（都可调）——
+strategy:
+  take_profit_target: 0.30        # 持仓收益达到 30% → 提示分批止盈
+  trailing_dd_after_profit: 0.10  # 盈利后从高点回撤 10% → 回撤止盈
+  stop_loss: -0.20                # 亏损 20% → 止损警戒（指数定投通常不止损，仅提示复核）
+  rebalance_band: 0.05            # 权重偏离目标 5pct → 再平衡提示
+  rsi_overbought: 75.0
+  rsi_oversold: 30.0
+  high_percentile: 0.80           # 净值分位 > 80% → 视为高位（偏谨慎）
+  low_percentile: 0.20            # 净值分位 < 20% → 视为低位（偏积极）
+  percentile_lookback: 504        # 估值分位回溯交易日数（约 2 年）
+  rf_annual: 0.02                 # 夏普比率用的年化无风险利率
+
+# —— 数据源 ——
+datasource:
+  history_days: 400
+  cache_ttl_minutes: 30
+  cache_dir: data/cache
+  request_timeout: 15
+  # 指数代码 → 行情 ticker（Yahoo 风格）。可在此扩展更多指数。
+  index_map:
+    "^GSPC": "^GSPC"      # 标普500
+    "^NDX": "^NDX"        # 纳斯达克100
+    "^IXIC": "^IXIC"      # 纳指综合
+    "^DJI": "^DJI"        # 道琼斯
+    "^SOX": "^SOX"        # 费城半导体
+    "USDCNY": "CNY=X"     # 美元兑人民币

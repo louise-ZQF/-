@@ -1,0 +1,64 @@
+name: 每日基金报告
+
+# 说明：
+#  * 定时任务（schedule）只在【默认分支】上生效。把本仓库的默认分支设为包含本文件的分支，
+#    或将本分支合并到默认分支后，定时才会自动跑。
+#  * 也可随时在 Actions 页面手动触发（workflow_dispatch）来测试。
+#  * cron 用 UTC：23:00 UTC ≈ 北京时间次日 07:00，正好在美股收盘后、国内基金净值更新前，
+#    适合「根据昨夜美股估算今天/这两天会涨跌多少」。周一到周五各跑一次。
+on:
+  schedule:
+    - cron: "0 23 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      send_email:
+        description: "是否发送邮件 (true/false)"
+        default: "true"
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 写入持仓（来自 Secret，可选）
+        env:
+          HOLDINGS_YAML: ${{ secrets.HOLDINGS_YAML }}
+        run: |
+          mkdir -p config
+          if [ -n "$HOLDINGS_YAML" ]; then
+            printf '%s' "$HOLDINGS_YAML" > config/holdings.yaml
+            echo "已从 Secret 写入 config/holdings.yaml"
+          elif [ -f config/holdings.yaml ]; then
+            echo "使用仓库内已提交的 config/holdings.yaml"
+          else
+            echo "::warning::未找到持仓配置（既无 HOLDINGS_YAML Secret，也无 config/holdings.yaml）"
+          fi
+
+      - name: 生成并发送报告
+        env:
+          SMTP_PROVIDER: ${{ secrets.SMTP_PROVIDER }}   # qq / 163 / 126 / gmail（或用 SMTP_HOST/PORT）
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}           # 发件邮箱完整地址
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}   # 邮箱「授权码」，不是登录密码
+          MAIL_TO: ${{ secrets.MAIL_TO }}               # 收件人，多个用逗号分隔；缺省=发给自己
+          SEND_EMAIL: ${{ github.event.inputs.send_email || 'true' }}
+        run: |
+          python -m fund_analyzer report || python -m fund_analyzer demo --email
+
+      - name: 上传报告产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fund-report
+          path: output/
+          if-no-files-found: ignore
+          retention-days: 14
