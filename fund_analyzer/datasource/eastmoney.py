@@ -70,34 +70,43 @@ class EastMoney:
         )
 
     # ---- 历史净值 ----
+    _PAGE_SIZE = 20  # API 单页最大条数
+
     def history(self, code: str, size: int = 300) -> List[NavPoint]:
-        url = (f"https://api.fund.eastmoney.com/f10/lsjz?"
-               f"fundCode={code}&pageIndex=1&pageSize={size}")
-        text = self.http.get(
-            url,
-            headers={"Referer": "https://fundf10.eastmoney.com/",
-                     "Accept": "application/json, text/javascript, */*; q=0.01"},
-            cache_key=f"lsjz:{code}:{size}",
-        )
-        if not text:
-            return []
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            return []
-        rows = (((payload or {}).get("Data") or {}).get("LSJZList")) or []
+        """获取历史净值，自动分页。"""
         points: List[NavPoint] = []
-        for row in rows:
-            d = _to_date(row.get("FSRQ", ""))
-            nav = _to_float(row.get("DWJZ"))
-            if d is None or nav is None:
-                continue
-            chg = _to_float(row.get("JZZZL"))
-            points.append(NavPoint(
-                d=d,
-                nav=nav,
-                cum_nav=_to_float(row.get("LJJZ")),
-                change=(chg / 100.0 if chg is not None else None),
-            ))
-        points.sort(key=lambda p: p.d)  # 升序（旧→新）
+        needed = min(size, 300)  # 最多 300 条
+        pages = (needed + self._PAGE_SIZE - 1) // self._PAGE_SIZE
+        for page in range(1, pages + 1):
+            page_size = min(self._PAGE_SIZE, needed - len(points))
+            url = (f"https://api.fund.eastmoney.com/f10/lsjz?"
+                   f"fundCode={code}&pageIndex={page}&pageSize={page_size}")
+            text = self.http.get(
+                url,
+                headers={"Referer": "https://fundf10.eastmoney.com/",
+                         "Accept": "application/json, text/javascript, */*; q=0.01"},
+                cache_key=f"lsjz:{code}:{page}:{page_size}",
+            )
+            if not text:
+                break
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                break
+            rows = (((payload or {}).get("Data") or {}).get("LSJZList")) or []
+            if not rows:
+                break
+            for row in rows:
+                d = _to_date(row.get("FSRQ", ""))
+                nav = _to_float(row.get("DWJZ"))
+                if d is None or nav is None:
+                    continue
+                chg = _to_float(row.get("JZZZL"))
+                points.append(NavPoint(
+                    d=d,
+                    nav=nav,
+                    cum_nav=_to_float(row.get("LJJZ")),
+                    change=(chg / 100.0 if chg is not None else None),
+                ))
+        points.sort(key=lambda p: p.d)
         return points

@@ -167,7 +167,7 @@ class Analyzer:
     def run(self, holdings: List[Holding]) -> PortfolioReport:
         funds: List[FundAnalysis] = []
         for h in holdings:
-            navpoints = self.em.history(h.code, size=300)
+            navpoints = self.em.history(h.code, size=100)
             quote = self.em.realtime(h.code)
             if quote and not h.name:
                 h.name = quote.name
