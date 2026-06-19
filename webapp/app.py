@@ -219,13 +219,7 @@ def create_app() -> Flask:
             return jsonify({"error": "请指定 category=us-qdii 或 a-stock"}), 400
         try:
             results = service.run_screener(cat)
-            return jsonify({"ok": True, "funds": [
-                {"code": f.code, "name": f.name, "fund_type": f.fund_type,
-                 "ret_1y": f.ret_1y, "ret_3y": f.ret_3y, "sharpe": f.sharpe,
-                 "max_dd": f.max_dd, "vol_annual": f.vol_annual,
-                 "factor_score": f.factor_score, "recommendation": f.recommendation}
-                for f in results
-            ], "count": len(results)})
+            return jsonify({"ok": True, "funds": results, "count": len(results)})
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
