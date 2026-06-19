@@ -198,8 +198,9 @@ function fundCard(f, idx){
     </div>
     <div class="fund-line">
       <span>最新净值 <span class="num">${num(m.last_nav)}</span></span>
+      <span>持仓 ¥${Number(f.current_value||f.market_value||0).toLocaleString('zh-CN',{maximumFractionDigits:0})}</span>
       <span>持仓收益 ${pctHtml(m.holding_return)}</span>
-      <span class="muted">信号分 ${f.score>=0?'+':''}${f.score}</span>
+      ${f.dca_plan ? `<span class="muted">每日定投 ¥${f.dca_plan.amount}</span>` : ''}
     </div>
     ${est}
     <div class="metrics">
