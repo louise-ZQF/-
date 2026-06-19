@@ -297,4 +297,8 @@ def run_ai_analysis(funds: List[dict]) -> dict:
         "sector_bias": analysis.sector_bias,
         "macro_note": analysis.macro_note,
         "dca_adjustments": analysis.dca_adjustments,
+        "news_feed": [
+            {"type": n["type"], "text": n["text"], "code": n.get("code", "")}
+            for n in analysis.news_feed
+        ],
     }

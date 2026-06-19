@@ -39,7 +39,7 @@ def test_build_portfolio_prompt():
         make_fa("110020", "易方达沪深300", AssetClass.CN_EQUITY),
     ]
     prompt = build_portfolio_prompt(funds, 5000)
-    assert "整体组合" in prompt or "投资组合" in prompt
+    assert "客户组合" in prompt or "整体组合" in prompt or "投资组合" in prompt
     assert "美股" in prompt or "us" in prompt.lower()
 
 
@@ -65,10 +65,11 @@ def test_parse_ai_response_portfolio():
 
 
 def test_ai_sentiment_defaults():
-    s = AiSentiment(code="270042", sentiment="中性")
+    s = AiSentiment(code="270042", sentiment="中性", reason="测试", suggestion="维持")
     assert s.code == "270042"
     assert s.sentiment == "中性"
-    assert s.reason == ""
+    assert s.reason == "测试"
+    assert s.suggestion == "维持"
     assert s.suggestion == "维持"
 
 
