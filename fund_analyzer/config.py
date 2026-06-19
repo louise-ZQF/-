@@ -10,7 +10,7 @@ from typing import List, Optional
 
 import yaml
 
-from .models import AssetClass, Holding, Tracking
+from .models import AssetClass, DcaPlan, Holding, Tracking
 
 
 @dataclass
@@ -98,6 +98,26 @@ def _parse_holding(d: dict) -> Holding:
         asset_class = AssetClass(ac)
     except ValueError:
         asset_class = AssetClass.OTHER
+    # Parse current_value
+    cv = d.get("current_value")
+    if cv is not None:
+        try:
+            current_value = float(cv)
+        except (TypeError, ValueError):
+            current_value = 0.0
+    else:
+        current_value = 0.0
+
+    # Parse dca_plan
+    dca_plan = None
+    dp = d.get("dca_plan") or {}
+    if dp and dp.get("amount"):
+        dca_plan = DcaPlan(
+            frequency=dp.get("frequency", "monthly"),
+            amount=float(dp["amount"]),
+            enabled=bool(dp.get("enabled", True)),
+        )
+
     return Holding(
         code=str(d["code"]).zfill(6) if str(d["code"]).isdigit() else str(d["code"]),
         name=d.get("name", ""),
@@ -109,6 +129,8 @@ def _parse_holding(d: dict) -> Holding:
         annual_fee=float(d.get("annual_fee", 0) or 0),
         tracking=tracking,
         note=d.get("note", ""),
+        current_value=current_value,
+        dca_plan=dca_plan,
     )
 
 
