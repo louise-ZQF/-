@@ -200,14 +200,15 @@ def _clean_holding(d: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def analyze_watchlist(codes: List[str]) -> List[dict]:
-    """分析自选基金列表，返回每只的看好/不看好+买入建议。"""
-    from fund_analyzer.ai_analyst import call_deepseek, parse_ai_response
-    from fund_analyzer.config import load_settings, _parse_holding
+    """分析自选基金列表 — 基于因子引擎的质量×择时分决策。"""
+    from fund_analyzer.config import load_settings
     from fund_analyzer.datasource.base import HttpClient
     from fund_analyzer.datasource.eastmoney import EastMoney
-    from fund_analyzer.datasource.market_index import MarketIndex
-    from fund_analyzer.portfolio import analyze_fund, compute_metrics
+    from fund_analyzer.factors import compute_factor_scores, factors_to_dict
     from fund_analyzer.importer import search_fund
+    from fund_analyzer.models import AssetClass, Holding
+    from fund_analyzer.portfolio import compute_metrics
+    from fund_analyzer.watchlist import decide_buy
 
     settings = load_settings(DEFAULT_SETTINGS)
     http = HttpClient(
@@ -216,114 +217,217 @@ def analyze_watchlist(codes: List[str]) -> List[dict]:
         timeout=settings.datasource.request_timeout,
     )
     em = EastMoney(http)
-    mi = MarketIndex(http)
-    indicators = mi.get_market_snapshot()
-
-    # 市场情绪摘要
-    market_summary = "\n".join(
-        f"{i['label']}: {i['value']}（{'偏高' if i['level']=='high' else '偏低' if i['level']=='low' else '正常'}）"
-        for i in indicators[:6]
-    )
 
     results = []
     for code in codes:
-        # 获取基金信息
         info = search_fund(code, em)
         if not info:
             results.append({"code": code, "error": "未找到该基金"})
             continue
 
-        # 获取历史净值 + 实时行情
         navpoints = em.history(code, size=100)
+        navs = [p.nav for p in navpoints if p.nav]
         quote = em.realtime(code)
 
-        # 构造临时 Holding + 计算指标
-        h = _parse_holding({"code": code, "name": info.name, "asset_class": info.asset_class})
-        m = compute_metrics(h, navpoints, quote, settings)
-        fa = analyze_fund(h, navpoints, quote, [], [], settings)
-
-        # 计算量化因子
-        from fund_analyzer.factors import compute_factor_scores, factors_to_dict
-        navs = [p.nav for p in navpoints if p.nav]
-        factor_scores = compute_factor_scores(navs) if navs else None
+        # 因子评分
+        factor_scores = compute_factor_scores(navs, info.annual_fee) if navs else None
         factor_dict = factors_to_dict(factor_scores) if factor_scores else None
 
-        # 构建买入分析 prompt（含量化因子）
-        factor_text = ""
-        if factor_scores:
-            factor_text = f"""量化因子评分:
-  动量({factor_scores.momentum:.0f}) 趋势质量({factor_scores.trend_quality:.0f}) 估值({factor_scores.value:.0f})
-  风险调整({factor_scores.risk_adjusted:.0f}) 波动状态({factor_scores.vol_regime:.0f}) 回撤恢复({factor_scores.drawdown_recovery:.0f})
-  综合: {factor_scores.composite:.0f}/100 → {factor_scores.summary}
-"""
+        # Metrics
+        try:
+            ac = AssetClass(info.asset_class)
+        except ValueError:
+            ac = AssetClass.OTHER
+        h = Holding(code=code, name=info.name, asset_class=ac)
+        m = compute_metrics(h, navpoints, quote, settings)
 
-        fund_text = f"""基金代码: {code}
-名称: {info.name}
-类型: {info.asset_class}
-最新净值: {m.last_nav}
-近1周: {(m.ret_1w or 0)*100:+.1f}%  近1月: {(m.ret_1m or 0)*100:+.1f}%  近3月: {(m.ret_3m or 0)*100:+.1f}%
-RSI(14): {m.rsi14:.0f}  估值分位: {(m.price_percentile or 0)*100:.0f}%  最大回撤: {(m.max_drawdown or 0)*100:.1f}%
-年化波动: {(m.vol_annual or 0)*100:.1f}%  夏普: {m.sharpe or 0:.2f}
-{factor_text}"""
-
-        prompt = f"""你是顶级量化基金分析师。结合技术指标和六因子量化评分，判断这只基金现在是否值得买入。
-
-{fund_text}
-
-## 当前市场环境
-{market_summary}
-
-## 请给出判断（简洁，3-4句）：
-1. 看好/中性/不看好 — 为什么？（务必参考量化因子的综合得分和分项）
-2. 现在适合买入吗？如果适合，建议什么价位/策略？
-3. 最大的风险和最大的机会各一句话
-
-格式：
-判断: 看好/中性/不看好
-适合买入: 是/否/等回调
-建议: （具体操作建议）
-风险: （最大风险）
-机会: （最大机会）"""
-
-        resp = call_deepseek(prompt, system="你是顶级量化基金分析师，擅长多因子模型。回答简洁、具体、可执行。只输出结果，不解释。")
-        if not resp:
-            results.append({
-                "code": code, "name": info.name, "asset_class": info.asset_class,
-                "metrics": {
-                    "last_nav": m.last_nav, "ret_1m": m.ret_1m, "ret_3m": m.ret_3m,
-                    "rsi14": m.rsi14, "price_percentile": m.price_percentile,
-                    "max_drawdown": m.max_drawdown, "vol_annual": m.vol_annual, "sharpe": m.sharpe,
-                },
-                "error": "AI 分析暂时不可用（请设置 DEEPSEEK_API_KEY）",
-            })
-            continue
-
-        # 解析 AI 回复
-        lines = resp.strip().splitlines()
-        ai = {}
-        for line in lines:
-            for key in ["判断", "适合买入", "建议", "风险", "机会"]:
-                if line.startswith(f"{key}:") or line.startswith(f"{key}："):
-                    ai[key] = line.split(":", 1)[-1].split("：", 1)[-1].strip()
+        # 决策
+        quality_score = factor_scores.quality_score if factor_scores else 0
+        timing_score = factor_scores.timing_score if factor_scores else 0
+        decision = decide_buy(quality_score, timing_score)
 
         results.append({
             "code": code,
             "name": info.name,
             "asset_class": info.asset_class,
             "metrics": {
-                "last_nav": m.last_nav, "ret_1m": m.ret_1m, "ret_3m": m.ret_3m,
+                "last_nav": m.last_nav,
+                "ret_1w": m.ret_1w, "ret_1m": m.ret_1m, "ret_3m": m.ret_3m,
                 "rsi14": m.rsi14, "price_percentile": m.price_percentile,
                 "max_drawdown": m.max_drawdown, "vol_annual": m.vol_annual, "sharpe": m.sharpe,
             },
-            "judgment": ai.get("判断", "—"),
-            "buy_signal": ai.get("适合买入", "—"),
-            "advice": ai.get("建议", "—"),
-            "risk": ai.get("风险", "—"),
-            "opportunity": ai.get("机会", "—"),
             "factors": factor_dict,
+            "decision": decision,
         })
 
     return results
+
+
+def analyze_watchlist_full(codes: List[str]) -> dict:
+    """完整分析：因子评分 + 择时决策 + 持仓相关性 + 买点提醒。"""
+    from fund_analyzer.config import load_settings
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.factors import compute_factor_scores, factors_to_dict
+    from fund_analyzer.importer import search_fund
+    from fund_analyzer.models import AssetClass, Holding
+    from fund_analyzer.portfolio import compute_metrics
+    from fund_analyzer.watchlist import decide_buy, compute_correlation, load_watchlist
+
+    settings = load_settings(DEFAULT_SETTINGS)
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=settings.datasource.cache_ttl_minutes,
+        timeout=settings.datasource.request_timeout,
+    )
+    em = EastMoney(http)
+
+    # 加载持仓 → 取净值用于相关性
+    holdings_raw = read_holdings_raw() or []
+    holdings_navs_map = {}
+    for h in holdings_raw:
+        hcode = str(h.get("code", "")).strip()
+        if hcode:
+            pts = em.history(hcode, size=100)
+            nv = [p.nav for p in pts if p.nav]
+            if len(nv) >= 20:
+                holdings_navs_map[hcode] = nv
+
+    results = []
+    all_factor_data = {}
+    for code in codes:
+        info = search_fund(code, em)
+        if not info:
+            results.append({"code": code, "error": "未找到该基金"})
+            continue
+
+        navpoints = em.history(code, size=100)
+        navs = [p.nav for p in navpoints if p.nav]
+        quote = em.realtime(code)
+
+        factor_scores = compute_factor_scores(navs, info.annual_fee) if navs else None
+        factor_dict = factors_to_dict(factor_scores) if factor_scores else None
+
+        try:
+            ac = AssetClass(info.asset_class)
+        except ValueError:
+            ac = AssetClass.OTHER
+        h = Holding(code=code, name=info.name, asset_class=ac)
+        m = compute_metrics(h, navpoints, quote, settings)
+
+        quality_score = factor_scores.quality_score if factor_scores else 0
+        timing_score = factor_scores.timing_score if factor_scores else 0
+        decision = decide_buy(quality_score, timing_score)
+
+        # 相关性
+        correlation = compute_correlation(navs, holdings_navs_map) if navs else []
+
+        results.append({
+            "code": code,
+            "name": info.name,
+            "asset_class": info.asset_class,
+            "metrics": {
+                "last_nav": m.last_nav,
+                "ret_1w": m.ret_1w, "ret_1m": m.ret_1m, "ret_3m": m.ret_3m,
+                "rsi14": m.rsi14, "price_percentile": m.price_percentile,
+                "max_drawdown": m.max_drawdown, "vol_annual": m.vol_annual, "sharpe": m.sharpe,
+            },
+            "factors": factor_dict,
+            "decision": decision,
+            "correlation": correlation,
+        })
+        if factor_scores:
+            all_factor_data[code] = factor_scores
+
+    # 买点提醒（基于已保存的自选列表）
+    watch_items = load_watchlist()
+    from fund_analyzer.watchlist import check_buy_alerts
+    alerts = check_buy_alerts(watch_items, all_factor_data)
+
+    return {"results": results, "alerts": alerts}
+
+
+# ---------------------------------------------------------------------------
+# 自选基金 CRUD
+# ---------------------------------------------------------------------------
+
+def get_watchlist() -> list:
+    """读取自选列表。"""
+    from fund_analyzer.watchlist import load_watchlist
+    items = load_watchlist()
+    return [{
+        "code": w.code, "name": w.name, "asset_class": w.asset_class.value,
+        "added_at": w.added_at, "note": w.note, "target_buy": w.target_buy,
+        "annual_fee": w.annual_fee,
+    } for w in items]
+
+
+def add_watch_item(data: dict) -> dict:
+    """添加或更新自选基金。"""
+    from fund_analyzer.config import load_settings
+    from fund_analyzer.datasource.base import HttpClient
+    from fund_analyzer.datasource.eastmoney import EastMoney
+    from fund_analyzer.importer import search_fund
+    from fund_analyzer.models import AssetClass, WatchItem
+    from fund_analyzer.watchlist import load_watchlist, save_watchlist
+
+    code = str(data.get("code", "")).strip()
+    if not code:
+        return {"ok": False, "error": "基金代码不能为空"}
+
+    # 自动补全基金信息
+    settings = load_settings(DEFAULT_SETTINGS)
+    http = HttpClient(
+        cache_dir=settings.datasource.cache_dir,
+        ttl_minutes=settings.datasource.cache_ttl_minutes,
+        timeout=settings.datasource.request_timeout,
+    )
+    em = EastMoney(http)
+    info = search_fund(code, em)
+
+    items = load_watchlist()
+    existing = next((i for i, w in enumerate(items) if w.code == code), None)
+
+    if existing is not None:
+        w = items[existing]
+        if data.get("name"):
+            w.name = str(data["name"])
+        if data.get("note"):
+            w.note = str(data["note"])
+        if data.get("target_buy") is not None:
+            w.target_buy = data["target_buy"]
+        if data.get("annual_fee") is not None:
+            w.annual_fee = float(data["annual_fee"])
+    else:
+        try:
+            ac = AssetClass(data.get("asset_class", "other")) if data.get("asset_class") else AssetClass.OTHER
+        except ValueError:
+            ac = AssetClass.OTHER
+        w = WatchItem(
+            code=code,
+            name=data.get("name", info.name if info else ""),
+            asset_class=ac,
+            added_at=data.get("added_at", datetime.now().strftime("%Y-%m-%d")),
+            note=data.get("note", ""),
+            target_buy=data.get("target_buy"),
+            annual_fee=float(data.get("annual_fee", info.annual_fee if info else 0) or 0),
+        )
+        items.append(w)
+
+    save_watchlist(items)
+    return {"ok": True, "code": code}
+
+
+def remove_watch_item(code: str) -> dict:
+    """从自选列表删除。"""
+    from fund_analyzer.watchlist import load_watchlist, save_watchlist
+    items = load_watchlist()
+    before = len(items)
+    items = [w for w in items if w.code != code]
+    if len(items) == before:
+        return {"ok": False, "error": f"未找到基金 {code}"}
+    save_watchlist(items)
+    return {"ok": True, "code": code}
 
 
 # ---------------------------------------------------------------------------

@@ -178,13 +178,22 @@
         <div class="panel-head">
           <div class="panel-title">🔍 自选基金分析</div>
           <div class="panel-head-actions">
-            <button id="wlAnalyzeBtn" class="btn primary">分析</button>
+            <button id="wlAddBtn" class="btn ghost">＋ 添加自选</button>
+            <button id="wlAnalyzeBtn" class="btn primary">分析全部</button>
           </div>
         </div>
-        <p class="hint">输入基金代码（多个用逗号或换行分隔），AI 帮你判断看不看好、适不适合现在买入</p>
-        <textarea id="wlInput" rows="3" placeholder="270042, 050025, 019736&#10;或每行一个代码"></textarea>
+        <div style="display:flex;gap:8px;margin:8px 0" id="wlAddRow" class="hidden">
+          <input id="wlAddCode" type="text" placeholder="基金代码" maxlength="6" style="width:120px;border:1px solid var(--line);border-radius:9px;padding:6px 10px;font-size:13px">
+          <input id="wlAddNote" type="text" placeholder="备注（可选）" style="flex:1;border:1px solid var(--line);border-radius:9px;padding:6px 10px;font-size:13px">
+          <button id="wlAddConfirm" class="btn primary">确认添加</button>
+          <button id="wlAddCancel" class="btn ghost">取消</button>
+        </div>
+        <p class="hint">自选基金用与持仓完全相同的指标/因子/估值体系做分析，只改最后决策：该不该买</p>
         <div id="wlStatus" class="save-msg" style="margin-top:8px"></div>
       </div>
+      <!-- 自选列表 -->
+      <div id="wlList"></div>
+      <!-- 分析结果 -->
       <div id="wlResults" class="wl-results"></div>
     </section>
 

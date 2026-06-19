@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
-from typing import Optional
+from typing import Dict, Optional
 
 
 class AssetClass(str, Enum):
@@ -66,6 +66,28 @@ class DcaPlan:
     frequency: str = "monthly"   # "daily" | "weekly" | "monthly"
     amount: float = 0.0          # 每期定投金额（元）
     enabled: bool = True
+
+
+@dataclass
+class WatchItem:
+    """自选基金（轻量，可复用 Holding 的分析管线）。"""
+    code: str
+    name: str = ""
+    asset_class: AssetClass = AssetClass.OTHER
+    added_at: str = ""          # ISO date
+    note: str = ""
+    target_buy: Optional[Dict] = None  # {valuation_pct, rsi_below, drawdown_from_high}
+    tracking: Tracking = field(default_factory=Tracking)
+    annual_fee: float = 0.0
+
+    def to_holding(self) -> Holding:
+        """转为临时 Holding（shares=0），复用 analyze_fund。"""
+        from .models import Holding  # avoid circular
+        return Holding(
+            code=self.code, name=self.name, asset_class=self.asset_class,
+            shares=0, cost_nav=0, tracking=self.tracking,
+            annual_fee=self.annual_fee, note=self.note,
+        )
 
 
 @dataclass
