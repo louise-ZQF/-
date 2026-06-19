@@ -61,6 +61,14 @@ class Tracking:
 
 
 @dataclass
+class DcaPlan:
+    """定投计划。"""
+    frequency: str = "monthly"   # "daily" | "weekly" | "monthly"
+    amount: float = 0.0          # 每期定投金额（元）
+    enabled: bool = True
+
+
+@dataclass
 class Holding:
     """一笔持仓。
 
@@ -78,6 +86,8 @@ class Holding:
     annual_fee: float = 0.0        # 年综合费率（管理+托管），用于估算的费用拖累
     tracking: Tracking = field(default_factory=Tracking)
     note: str = ""
+    current_value: float = 0.0                     # 用户填的当前仓位金额
+    dca_plan: Optional[DcaPlan] = None              # 定投计划
 
     @property
     def cost_amount(self) -> float:
