@@ -158,18 +158,52 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
-    # ---- 自选基金分析 ----
+    # ---- 自选基金 ----
+
+    @app.get("/api/watchlist")
+    def get_watchlist():
+        """读取自选列表。"""
+        try:
+            items = service.get_watchlist()
+            return jsonify({"ok": True, "watchlist": items})
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/watchlist")
+    def post_watchlist():
+        """添加/更新自选基金。"""
+        body = request.get_json(silent=True) or {}
+        try:
+            result = service.add_watch_item(body)
+            return jsonify(result)
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.delete("/api/watchlist")
+    def delete_watchlist():
+        """从自选列表删除。?code=270042"""
+        code = request.args.get("code", "").strip()
+        if not code:
+            return jsonify({"error": "请提供 code 参数"}), 400
+        try:
+            result = service.remove_watch_item(code)
+            return jsonify(result)
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
 
     @app.get("/api/watchlist/analyze")
     def watchlist_analyze():
-        """分析自选基金：看好/不看好 + 适合买入吗。支持 ?code=270042 或 ?codes=270042,050025"""
+        """分析自选：质量×择时决策 + 持仓相关性。?codes=270042,050025"""
         raw = request.args.get("codes") or request.args.get("code", "")
         codes = [c.strip() for c in raw.split(",") if c.strip() and len(c.strip()) == 6]
         if not codes:
             return jsonify({"error": "请提供基金代码，如 ?codes=270042,050025"}), 400
         try:
-            results = service.analyze_watchlist(codes)
-            return jsonify({"ok": True, "results": results})
+            data = service.analyze_watchlist_full(codes)
+            return jsonify({"ok": True, "results": data.get("results", []), "alerts": data.get("alerts", [])})
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500

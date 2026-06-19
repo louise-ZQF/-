@@ -28,7 +28,7 @@ function money(x){ if(x==null||isNaN(x)) return '—'; return '¥'+Number(x).toL
 function num(x, d=4){ return (x==null||isNaN(x))?'—':Number(x).toFixed(d); }
 
 // ---------- 状态 ----------
-const state = { data:null, holdings:[] };
+const state = { data:null, holdings:[], watchlist:[] };
 
 // ---------- 初始化 ----------
 function init(){
@@ -45,6 +45,9 @@ function init(){
   const csb=$('#codeSearchBtn'); if(csb) csb.addEventListener('click', doCodeSearch);
   const sad=$('#setAllDailyBtn'); if(sad) sad.addEventListener('click', setAllDaily);
   const aab=$('#aiAnalyzeBtn'); if(aab) aab.addEventListener('click', runAiAnalysis);
+  const wla=$('#wlAddBtn'); if(wla) wla.addEventListener('click', toggleAddRow);
+  const wlc=$('#wlAddConfirm'); if(wlc) wlc.addEventListener('click', addWatchItem);
+  const wlcc=$('#wlAddCancel'); if(wlcc) wlcc.addEventListener('click', toggleAddRow);
   loadReport().then(()=>{
     loadAlerts();
     runAiAnalysis();
@@ -60,6 +63,7 @@ function setTab(tab){
   $$('.view').forEach(v=>v.classList.remove('active'));
   $('#view-'+tab).classList.add('active');
   if(tab==='holdings' && state.holdings.length===0) loadHoldings();
+  if(tab==='watchlist') loadWatchlist();
 }
 
 // ---------- 加载报告 ----------
@@ -588,24 +592,82 @@ async function loadReturnCurve(){
 }
 
 // ---------- 自选分析 ----------
+async function loadWatchlist(){
+  try{
+    const r=await fetch('/api/watchlist');
+    const d=await r.json();
+    state.watchlist=d.watchlist||[];
+    renderWatchlistList();
+  }catch(e){
+    state.watchlist=[];
+    $('#wlList').innerHTML='';
+  }
+}
+
+function renderWatchlistList(){
+  const el=$('#wlList');
+  if(!state.watchlist.length){
+    el.innerHTML='<div class="empty">暂无自选基金，点击「添加自选」开始</div>';
+    return;
+  }
+  el.innerHTML=state.watchlist.map(w=>`<div class="wl-item">
+    <span class="wl-name">${esc(w.name||w.code)}</span>
+    <span class="wl-code">${esc(w.code)}</span>
+    ${w.note ? `<span class="wl-note">${esc(w.note)}</span>` : ''}
+    <button class="wl-remove" data-code="${esc(w.code)}">×</button>
+  </div>`).join('');
+  $$('.wl-remove').forEach(b=>b.addEventListener('click', ()=>removeWatchItem(b.dataset.code)));
+}
+
+async function addWatchItem(){
+  const code=$('#wlAddCode').value.trim();
+  const note=$('#wlAddNote').value.trim();
+  if(code.length!==6){ $('#wlStatus').textContent='请输入6位基金代码'; return; }
+  try{
+    const r=await fetch('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,note})});
+    const d=await r.json();
+    if(d.error){ $('#wlStatus').textContent=d.error; return; }
+    $('#wlAddCode').value='';
+    $('#wlAddNote').value='';
+    toggleAddRow();
+    $('#wlStatus').textContent=`已添加 ${esc(code)} ✅`;
+    loadWatchlist();
+  }catch(e){
+    $('#wlStatus').textContent='添加失败: '+e.message;
+  }
+}
+
+async function removeWatchItem(code){
+  try{
+    const r=await fetch('/api/watchlist?code='+code,{method:'DELETE'});
+    const d=await r.json();
+    if(d.error){ $('#wlStatus').textContent=d.error; return; }
+    $('#wlStatus').textContent=`已移除 ${esc(code)}`;
+    loadWatchlist();
+  }catch(e){
+    $('#wlStatus').textContent='移除失败: '+e.message;
+  }
+}
+
+function toggleAddRow(){
+  const row=$('#wlAddRow');
+  row.classList.toggle('hidden');
+  if(!row.classList.contains('hidden')) $('#wlAddCode').focus();
+}
+
 $('#wlAnalyzeBtn')?.addEventListener('click', analyzeWatchlist);
 
 async function analyzeWatchlist(){
-  const raw=$('#wlInput').value.trim();
-  if(!raw){ $('#wlStatus').textContent='请输入基金代码'; return; }
-  const codes=raw.split(/[,\n\s]+/).filter(c=>c.length===6);
-  if(!codes.length){ $('#wlStatus').textContent='未识别到有效代码'; return; }
-
+  const codes=(state.watchlist||[]).map(w=>w.code);
+  if(!codes.length){ $('#wlStatus').textContent='自选列表为空，请先添加基金'; return; }
   $('#wlStatus').textContent=`分析 ${codes.length} 只基金中…`;
   $('#wlResults').innerHTML='<div class="loading">AI 分析中…</div>';
-
   try{
     const r=await fetch('/api/watchlist/analyze?codes='+codes.join(','));
     const d=await r.json();
     if(d.error){ $('#wlStatus').textContent=d.error; return; }
-
     $('#wlStatus').textContent=`分析完成 ✅`;
-    renderWatchlist(d.results||[]);
+    renderWatchlistResults(d.results||[]);
   }catch(e){
     $('#wlStatus').textContent='分析失败: '+e.message;
     $('#wlResults').innerHTML='';
@@ -632,21 +694,29 @@ function renderFactorBars(factors){
   </div>`;
 }
 
-function renderWatchlist(results){
+function renderWatchlistResults(results){
   const el=$('#wlResults');
-  const judgmentColors={看好:'#16a34a', 中性:'#6b7280', 不看好:'#dc2626'};
-  const buyColors={是:'#16a34a', 等回调:'#f59e0b', 否:'#dc2626'};
   el.innerHTML=results.map(r=>{
-    if(r.error) return `<div class="wl-card wl-error">${r.code}: ${r.error}</div>`;
+    if(r.error) return `<div class="wl-card wl-error">${esc(r.code)}: ${esc(r.error)}</div>`;
+
+    const dec=r.decision||{};
+    const buyColor=dec.color||'#6b7280';
+
+    const factorHtml=renderFactorBars(r.factors)||'';
+
+    const corrWarnings=(r.correlations||[]).filter(c=>c.correlation>0.7);
+    const corrHtml=corrWarnings.length>0
+      ? `<div class="wl-corr">${corrWarnings.map(c=>esc(c.warning)).join('<br>')}</div>`
+      : '';
+
     const m=r.metrics||{};
-    const jc=judgmentColors[r.judgment]||'#6b7280';
-    const bc=buyColors[r.buy_signal]||'#6b7280';
+
     return `<div class="wl-card">
       <div class="wl-head">
         <span class="wl-name">${esc(r.name)}</span>
-        <span class="wl-code">${esc(r.code)}</span>
-        <span class="wl-judgment" style="background:${jc}">${esc(r.judgment)}</span>
-        <span class="wl-buy" style="background:${bc}">${esc(r.buy_signal=='是'?'✅ 适合买入':r.buy_signal=='等回调'?'⏳ 等回调':r.buy_signal=='否'?'❌ 不建议':'—')}</span>
+        <span class="wl-code">${esc(r.code)} · ${esc(r.asset_class||'')}</span>
+        <span class="wl-judgment" style="background:${buyColor}">${esc(dec.label||'—')}</span>
+        ${dec.advice ? `<span class="wl-advice-tag">${esc(dec.advice)}</span>` : ''}
       </div>
       <div class="wl-metrics">
         <span>净值 ${num(m.last_nav)}</span>
@@ -655,12 +725,8 @@ function renderWatchlist(results){
         <span>RSI ${m.rsi14!=null?Math.round(m.rsi14):'—'}</span>
         <span>估值分位 ${m.price_percentile!=null?Math.round(m.price_percentile*100)+'%':'—'}</span>
       </div>
-      ${renderFactorBars(r.factors)}
-      ${r.advice ? `<div class="wl-advice"><b>建议：</b>${esc(r.advice)}</div>` : ''}
-      <div class="wl-risk-opp">
-        ${r.risk ? `<span class="wl-risk">⚠️ 风险：${esc(r.risk)}</span>` : ''}
-        ${r.opportunity ? `<span class="wl-opp">💡 机会：${esc(r.opportunity)}</span>` : ''}
-      </div>
+      ${factorHtml}
+      ${corrHtml}
     </div>`;
   }).join('');
 }
