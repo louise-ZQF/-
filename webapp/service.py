@@ -129,6 +129,8 @@ def _clean_holding(d: dict) -> dict:
                 out["name"] = info["name"]
             out["asset_class"] = info["asset_class"]
             out["annual_fee"] = info["annual_fee"]
+            if info.get("cost_nav") is not None:
+                out["cost_nav"] = info["cost_nav"]
             tk = info.get("tracking") or {}
             if tk.get("index"):
                 out["tracking"] = {
@@ -534,6 +536,11 @@ def auto_fill_fund(code: str) -> Optional[dict]:
     info = search_fund(code, em)
     if not info:
         return None
+
+    # Fetch current nav for cost baseline
+    q = em.realtime(code)
+    cost_nav = q.nav if q and q.nav else None
+
     return {
         "code": info.code,
         "name": info.name,
@@ -545,6 +552,7 @@ def auto_fill_fund(code: str) -> Optional[dict]:
         },
         "annual_fee": info.annual_fee,
         "dca_plan": None,
+        "cost_nav": cost_nav,
     }
 
 

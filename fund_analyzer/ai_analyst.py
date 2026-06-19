@@ -37,7 +37,21 @@ def _cached(key: str, factory, ttl: int = _CACHE_TTL):
 
 # 总超时预算
 _SEARCH_TIMEOUT = 5  # 单个搜索超时
-_TOTAL_BUDGET = 30   # 总预算秒
+_TOTAL_BUDGET = 20   # 总预算秒
+
+# 搜索专用缓存（独立的 cache namespace）
+_SEARCH_CACHE_TTL = 7200  # 2 hours
+_search_cache: dict = {}
+
+
+def _cached_search(key: str, factory):
+    now = time.time()
+    entry = _search_cache.get(key)
+    if entry and now - entry["ts"] < _SEARCH_CACHE_TTL:
+        return entry["val"]
+    val = factory()
+    _search_cache[key] = {"ts": now, "val": val}
+    return val
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +394,7 @@ def search_news_for_fund(name: str, keywords: List[str] = None) -> List[str]:
     if keywords:
         query += " " + " ".join(keywords[:3])
     key = f"fund_news:{query}"
-    return _cached(key, lambda: _bing_search(query)[:5], 1800)
+    return _cached_search(key, lambda: _bing_search(query)[:5])
 
 
 def search_institutional_views(funds: List) -> List[str]:
@@ -402,7 +416,7 @@ def search_institutional_views(funds: List) -> List[str]:
                 except Exception:
                     continue
         return views[:6]
-    return _cached("inst_views", _fetch, 3600)
+    return _cached_search("inst_views", _fetch)
 
 
 def search_macro_events() -> List[str]:
@@ -422,7 +436,7 @@ def search_macro_events() -> List[str]:
                 except Exception:
                     continue
         return events[:6]
-    return _cached("macro_events", _fetch, 3600)
+    return _cached_search("macro_events", _fetch)
 
 
 def _extract_topics(funds: List) -> List[str]:

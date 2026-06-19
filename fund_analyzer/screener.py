@@ -111,8 +111,8 @@ def _fetch_rank(http: HttpClient, fund_type: str = "all", sort_by: str = "1nzf",
             name = parts[1].strip()
             # 字段: code,name,pinyin,date,nav,cum_nav,日涨幅,近1周,近1月,近3月,近6月,近1年,近2年,近3年,...
             # 0    1    2      3    4   5        6      7     8     9     10    11     12     13
-            ret_1y_str = parts[10] if len(parts) > 10 else "0"
-            ret_3y_str = parts[12] if len(parts) > 12 else "0"
+            ret_1y_str = parts[11] if len(parts) > 11 else "0"
+            ret_3y_str = parts[13] if len(parts) > 13 else "0"
             ret_1y = float(ret_1y_str) / 100.0 if ret_1y_str else 0
             ret_3y = float(ret_3y_str) / 100.0 if ret_3y_str else 0
         except (ValueError, IndexError):
@@ -221,7 +221,7 @@ def screen_funds(http: HttpClient, em,
             continue
 
         # 获取历史净值计算夏普和回撤
-        navpoints = em.history(c["code"], size=100)
+        navpoints = em.history(c["code"], size=200)  # TODO: increase to 750 for production use
         if len(navpoints) < 40:
             continue
         navs = [p.nav for p in navpoints if p.nav]

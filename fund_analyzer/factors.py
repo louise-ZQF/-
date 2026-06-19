@@ -22,10 +22,12 @@ class FactorScores:
     risk_adjusted: float = 50.0
     vol_regime: float = 50.0
     drawdown_recovery: float = 50.0
+    quality_score: float = 50.0    # 基金质量分：这只基金本身好不好（慢变量，相对基准）
+    timing_score: float = 50.0     # 择时分：现在是不是买入时机（快变量）
     composite: float = 50.0
     notes: List[str] = field(default_factory=list)
     summary: str = ""
-    labels: tuple = ("动量", "趋势质量", "估值", "风险调整", "波动状态", "回撤恢复")
+    labels: tuple = ("动量", "趋势质量", "估值", "风险调整", "波动状态", "回撤恢复", "质量分", "择时分")
 
 
 WEIGHTS = {
@@ -55,9 +57,9 @@ def _momentum_score(navs: Sequence[float]) -> Tuple[float, str]:
     # 加速度：近期动量是否在改善
     accel = ret_1m - ret_3m if ret_3m != 0 else 0
 
-    # 合成原始分（-1 ~ +1 映射到 0-100）
+    # 合成原始分 → z-score 映射到 0-100
     raw = (ret_1w * 0.2 + ret_1m * 0.4 + ret_3m * 0.3 + accel * 0.1)
-    score = 50 + raw * 80  # 放大到有区分度
+    score = max(0, min(100, 50 + (raw / 0.04) * 20))
     score = max(0, min(100, score))
 
     # 解读
@@ -185,13 +187,13 @@ def _risk_adjusted_score(rets: Sequence[float], navs: Sequence[float]) -> Tuple[
     calmar = ann_ret / max(abs(md), 0.001)
 
     # 合成：Sharpe(0.4) + Sortino(0.3) + Calmar(0.3)
-    # 每个指标映射到 0-100
-    def _map_ratio(r: float, center: float = 0.5) -> float:
-        return min(100, max(0, 50 + (r - center) * 40))
+    # 每个指标映射到 0-100（z-score 方式）
+    def _map_z(r: float, ref_std: float = 1.0) -> float:
+        return min(100, max(0, 50 + (r / ref_std) * 20))
 
-    s_score = _map_ratio(sharpe, 0.3)
-    so_score = _map_ratio(sortino, 0.5)
-    c_score = _map_ratio(calmar, 0.8)
+    s_score = _map_z(sharpe, 1.0)
+    so_score = _map_z(sortino, 1.5)
+    c_score = _map_z(calmar, 2.0)
     score = s_score * 0.4 + so_score * 0.3 + c_score * 0.3
 
     if score >= 70:
@@ -278,7 +280,7 @@ def _drawdown_recovery_score(navs: Sequence[float]) -> Tuple[float, str]:
 # 综合评分
 # ---------------------------------------------------------------------------
 
-def compute_factor_scores(navs: Sequence[float]) -> FactorScores:
+def compute_factor_scores(navs: Sequence[float], annual_fee: float = 0.0) -> FactorScores:
     """计算所有因子评分。navs 是单位净值序列（升序）。"""
     fs = FactorScores()
 
@@ -299,7 +301,7 @@ def compute_factor_scores(navs: Sequence[float]) -> FactorScores:
 
     fs.notes = [n_mom, n_trend, n_val, n_ra, n_vol, n_dd]
 
-    # 加权综合
+    # 加权综合（旧复合分，保持向后兼容）
     fs.composite = round(
         fs.momentum * WEIGHTS["momentum"]
         + fs.trend_quality * WEIGHTS["trend_quality"]
@@ -310,17 +312,58 @@ def compute_factor_scores(navs: Sequence[float]) -> FactorScores:
         1,
     )
 
-    # 综合解读
-    if fs.composite >= 80:
-        fs.summary = f"综合{fs.composite:.0f}分·强烈看好 — 多因子共振向上，趋势+动量+风险调整均优"
-    elif fs.composite >= 65:
-        fs.summary = f"综合{fs.composite:.0f}分·偏多 — 多数因子积极，可考虑配置"
-    elif fs.composite >= 50:
-        fs.summary = f"综合{fs.composite:.0f}分·中性 — 因子多空交织，需精选时机"
-    elif fs.composite >= 35:
-        fs.summary = f"综合{fs.composite:.0f}分·偏弱 — 多数因子走弱，建议观望或轻仓"
+    # ---- 质量分（Quality Score）：基金本身好不好 ----
+    # 1. 风险调整收益 40%
+    q_risk = fs.risk_adjusted * 0.4
+    # 2. 一致性（波动率越低越稳定）20%
+    ann_vol = (statistics.stdev(rets) * math.sqrt(252)) if len(rets) > 1 else 0.0
+    consistency = max(10, 100 - ann_vol * 100 * 2.5)
+    # 3. 回撤控制 20%
+    md = ind.max_drawdown(navs) or 0
+    if md >= -0.05:
+        dd_ctrl = 90
+    elif md >= -0.10:
+        dd_ctrl = 75
+    elif md >= -0.15:
+        dd_ctrl = 60
+    elif md >= -0.25:
+        dd_ctrl = 40
+    elif md >= -0.35:
+        dd_ctrl = 25
     else:
-        fs.summary = f"综合{fs.composite:.0f}分·规避 — 多因子共振向下，不建议介入"
+        dd_ctrl = 10
+    # 4. 费用效率 20%
+    if annual_fee <= 0:
+        fee_score = 100
+    elif annual_fee < 0.003:
+        fee_score = 90
+    elif annual_fee < 0.006:
+        fee_score = 80
+    elif annual_fee < 0.010:
+        fee_score = 60
+    else:
+        fee_score = 40
+
+    fs.quality_score = round(q_risk + consistency * 0.2 + dd_ctrl * 0.2 + fee_score * 0.2, 1)
+
+    # ---- 择时分（Timing Score）：现在是不是买入时机 ----
+    fs.timing_score = round(
+        fs.value * 0.4
+        + fs.momentum * 0.2
+        + fs.trend_quality * 0.2
+        + fs.vol_regime * 0.2,
+        1,
+    )
+
+    # 综合解读（基于质量+时机）
+    if fs.quality_score >= 70 and fs.timing_score >= 70:
+        fs.summary = f"优质+好时机 — 重点配置"
+    elif fs.quality_score >= 70:
+        fs.summary = f"优质但时机不佳 — 持有观望"
+    elif fs.quality_score >= 50:
+        fs.summary = f"质量中等 — 小仓试探"
+    else:
+        fs.summary = f"质量偏低 — 建议换基"
 
     return fs
 
@@ -337,6 +380,8 @@ def factors_to_dict(fs: FactorScores) -> dict:
             "drawdown_recovery": fs.drawdown_recovery,
         },
         "composite": fs.composite,
+        "quality_score": fs.quality_score,
+        "timing_score": fs.timing_score,
         "labels": list(fs.labels),
         "notes": fs.notes,
         "summary": fs.summary,
