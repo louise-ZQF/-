@@ -55,6 +55,16 @@
       <div class="panel-title section">持仓逐只分析</div>
       <div id="fundList" class="fund-list"><div class="loading">加载中…</div></div>
 
+      <div id="aiPanel" class="panel hidden">
+        <div class="panel-head">
+          <div class="panel-title">🤖 AI 智能分析（DeepSeek）</div>
+          <button id="aiAnalyzeBtn" class="btn ghost">🔄 刷新分析</button>
+        </div>
+        <div id="aiPortfolio" class="ai-section"></div>
+        <div id="aiFundTags" class="ai-tags"></div>
+        <div id="aiDcaTips" class="ai-dca"></div>
+      </div>
+
       <div id="notesPanel" class="panel hidden">
         <div class="panel-title">组合层建议</div>
         <ul id="notesList" class="notes"></ul>
@@ -68,6 +78,41 @@
 
     <!-- ===================== 持仓管理 ===================== -->
     <section id="view-holdings" class="view">
+      <!-- 导入区 -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">📥 导入持仓</div>
+        </div>
+        <div class="import-tabs">
+          <button class="imp-tab active" data-imp="batch">批量粘贴</button>
+          <button class="imp-tab" data-imp="ocr">截图识别</button>
+          <button class="imp-tab" data-imp="code">代码搜索</button>
+        </div>
+        <!-- 批量粘贴 -->
+        <div id="import-batch" class="import-pane active">
+          <p class="hint">每行一个基金：<code>代码 金额</code>，例如 <code>270042 50000</code></p>
+          <textarea id="batchText" rows="6" placeholder="270042 50000&#10;050025 30000&#10;110020 20000"></textarea>
+          <button id="batchImportBtn" class="btn primary" style="margin-top:8px">导入并自动补全</button>
+        </div>
+        <!-- 截图识别 -->
+        <div id="import-ocr" class="import-pane">
+          <p class="hint">上传支付宝「我的持仓」页面截图，自动识别基金代码和金额</p>
+          <input type="file" id="ocrFile" accept="image/*" style="margin:8px 0">
+          <button id="ocrImportBtn" class="btn primary">识别导入</button>
+        </div>
+        <!-- 代码搜索 -->
+        <div id="import-code" class="import-pane">
+          <p class="hint">输入6位基金代码，自动补全名称、类型、跟踪指数等</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="codeSearchInput" type="text" placeholder="270042" maxlength="6" style="width:140px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:14px">
+            <input id="codeSearchAmount" type="number" placeholder="持仓金额" step="any" style="width:160px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:14px">
+            <button id="codeSearchBtn" class="btn primary">搜索并添加</button>
+          </div>
+        </div>
+        <div id="importStatus" class="save-msg" style="margin-top:10px"></div>
+      </div>
+
+      <!-- 持仓表格 -->
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title">我的持仓</div>
@@ -78,15 +123,15 @@
           </div>
         </div>
         <p class="hint">
-          填好基金代码即可。份额/成本留空则只做信号分析。<b>美股 QDII</b> 请填「跟踪指数」与「滞后天数」，
-          才能算时差估算；A 股基金跟踪指数留空即可。保存后到「仪表盘」切到<b>我的持仓</b>查看。
+          最少只需填<b>代码</b>和<b>仓位金额</b>。其余字段用导入/搜索自动补全，也可手动改。
         </p>
         <div class="table-scroll">
           <table id="holdingsTable" class="htable">
             <thead>
               <tr>
-                <th>代码*</th><th>名称</th><th>类别</th><th>份额</th><th>成本净值</th>
-                <th>目标权重</th><th>定投</th><th>跟踪指数</th><th>滞后</th><th>对冲</th><th>年费率</th><th></th>
+                <th>代码*</th><th>名称</th><th>类别</th><th>仓位金额</th><th>成本净值</th>
+                <th>目标权重</th><th>定投</th><th>定投频率</th><th>定投额</th>
+                <th>跟踪指数</th><th>滞后</th><th>年费率</th><th></th>
               </tr>
             </thead>
             <tbody id="holdingsBody"></tbody>
@@ -94,11 +139,6 @@
         </div>
         <div id="saveMsg" class="save-msg"></div>
       </div>
-      <p class="hint small">
-        提示：代码与跟踪指数对照 —— <code>^GSPC</code> 标普500 ｜ <code>^NDX</code> 纳指100 ｜
-        <code>^IXIC</code> 纳指综合 ｜ <code>^DJI</code> 道指 ｜ <code>^SOX</code> 费城半导体。
-        「滞后」是基金净值比指数晚几个交易日（美股 QDII 多为 1~2，建议校准一次）。
-      </p>
     </section>
   </main>
 
