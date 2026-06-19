@@ -435,11 +435,12 @@ def remove_watch_item(code: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def run_screener(category: str = "us_qdii") -> list:
-    """运行基金筛选器。"""
+    """运行新版基金筛选器。"""
     from fund_analyzer.config import load_settings
     from fund_analyzer.datasource.base import HttpClient
     from fund_analyzer.datasource.eastmoney import EastMoney
-    from fund_analyzer.screener import screen_funds
+    from fund_analyzer.datasource.market_index import MarketIndex
+    from fund_analyzer.screener import screen_funds_v2
 
     settings = load_settings(DEFAULT_SETTINGS)
     http = HttpClient(
@@ -448,7 +449,18 @@ def run_screener(category: str = "us_qdii") -> list:
         timeout=settings.datasource.request_timeout,
     )
     em = EastMoney(http)
-    return screen_funds(http, em, category=category, top_n=20)
+    mi = MarketIndex(http)
+    funds = screen_funds_v2(http, em, mi, category=category, top_n=20)
+
+    return [
+        {"code": f.code, "name": f.name, "fund_type": f.fund_type,
+         "benchmark_name": f.benchmark_name, "composite_score": f.composite_score,
+         "confidence": f.confidence, "final_score": f.final_score,
+         "peer_rank": f.peer_rank, "model_type": f.model_type,
+         "detail_scores": f.detail_scores,
+         "strengths": f.strengths, "risks": f.risks}
+        for f in funds
+    ]
 
 
 def generate_alerts(funds_raw: List[dict]) -> list:
