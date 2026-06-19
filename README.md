@@ -187,9 +187,13 @@ webapp/            ★ 可视化网站（Flask）
   service.py       演示/实时报告、持仓读写
   serialize.py     分析结果 → 前端 JSON
   static/          index.html / style.css / app.js（零依赖，手写 SVG 图表）
+wsgi.py            生产入口（gunicorn wsgi:app）
+Dockerfile / Procfile / render.yaml / fly.toml   部署配置
+requirements-deploy.txt  部署依赖（含 gunicorn）
 config/            holdings / settings 示例
-tests/             单元测试（28 个用例）
+tests/             单元测试（33 个用例）
 .github/workflows/ 每日发邮件 + 测试 CI
+DEPLOY.md          部署到公网指南（Render/Docker/Railway/Fly）
 docs/METHODOLOGY.md  方法论与模型说明
 docs/webapp-preview.svg  网站界面示意图
 ```
@@ -214,3 +218,15 @@ docs/webapp-preview.svg  网站界面示意图
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## 十一、部署到公网（手机随时打开）
+
+想把网站放到线上、用手机随时访问？见 **[DEPLOY.md](DEPLOY.md)**，覆盖：
+
+- **Render**（免费、最省事，连 GitHub 仓库点几下就上线）
+- **自有服务器 / VPS + Docker**（最稳、可绑域名、适合国内）
+- **Railway / Fly.io**（备选，Fly 带持久盘）
+
+部署三件事务必注意：① 设 `APP_PASSWORD` 开登录认证（公网上是你的账户数据）；
+② 用 `HOLDINGS_YAML` 环境变量或持久盘保存持仓（免费平台文件系统是临时的）；
+③ 服务器要能联网访问行情数据源。

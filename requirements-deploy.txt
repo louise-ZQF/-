@@ -1,0 +1,3 @@
+# 部署用依赖（在运行依赖基础上加生产级 WSGI 服务器）
+-r requirements.txt
+gunicorn>=21.0

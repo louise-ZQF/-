@@ -1,23 +1,49 @@
 """Flask 应用：静态前端 + JSON API。
 
 启动：
-    python -m webapp                 # 默认 http://127.0.0.1:5000
+    python -m webapp                 # 开发服务器，默认 http://127.0.0.1:5000
     python -m fund_analyzer serve    # 同上（CLI 子命令）
+    gunicorn wsgi:app                # 生产部署（见 DEPLOY.md）
+
+访问保护（公网部署务必开启）：
+    设置环境变量 APP_PASSWORD 后，全站启用 HTTP Basic 认证；
+    APP_USERNAME 可选（默认任意用户名 + 正确密码即可）。健康检查 /api/health 不需要认证。
 """
 from __future__ import annotations
 
 import os
 import traceback
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 from . import service
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
+def _auth_ok() -> bool:
+    pw = os.getenv("APP_PASSWORD")
+    if not pw:
+        return True  # 未设置密码 → 不启用认证（仅建议本机使用）
+    expected_user = os.getenv("APP_USERNAME", "")
+    auth = request.authorization
+    if not auth:
+        return False
+    user_ok = (not expected_user) or (auth.username == expected_user)
+    return bool(user_ok and auth.password == pw)
+
+
 def create_app() -> Flask:
     app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
+
+    @app.before_request
+    def _guard():
+        if request.path == "/api/health":
+            return None
+        if not _auth_ok():
+            return Response("需要登录", 401,
+                            {"WWW-Authenticate": 'Basic realm="fund-analyzer"'})
+        return None
 
     @app.get("/")
     def index():
@@ -33,7 +59,7 @@ def create_app() -> Flask:
         try:
             data = service.build_demo_json() if mode == "demo" else service.build_live_json()
             return jsonify(data)
-        except Exception as e:  # 任何异常都转成可读的 JSON，避免前端崩
+        except Exception as e:  # 任何异常都转成可读 JSON，避免前端崩
             traceback.print_exc()
             return jsonify({"error": str(e), "mode": mode}), 500
 

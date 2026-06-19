@@ -1,4 +1,10 @@
-"""服务层：为 Web API 组织数据（演示/实时报告、持仓读写）。"""
+"""服务层：为 Web API 组织数据（演示/实时报告、持仓读写）。
+
+部署相关：
+    * 持仓文件路径可用环境变量 HOLDINGS_PATH 覆盖（指向持久盘，避免临时文件系统丢数据）；
+    * 若文件不存在但设置了 HOLDINGS_YAML 环境变量，则把它落地成文件（适合无持久盘的平台，
+      用 Secret/环境变量注入持仓）。
+"""
 from __future__ import annotations
 
 import os
@@ -12,9 +18,27 @@ from fund_analyzer.portfolio import Analyzer, analyze_fund, build_report
 
 from .serialize import report_to_dict
 
-DEFAULT_HOLDINGS = "config/holdings.yaml"
 EXAMPLE_HOLDINGS = "config/holdings.example.yaml"
-DEFAULT_SETTINGS = "config/settings.yaml"
+DEFAULT_SETTINGS = os.getenv("SETTINGS_PATH", "config/settings.yaml")
+
+
+def holdings_path() -> str:
+    return os.getenv("HOLDINGS_PATH", "config/holdings.yaml")
+
+
+def _ensure_holdings_file(path: str) -> None:
+    """文件不存在但有 HOLDINGS_YAML 环境变量时，落地成文件。"""
+    if os.path.exists(path):
+        return
+    raw = os.getenv("HOLDINGS_YAML")
+    if not raw:
+        return
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(raw)
+    except OSError:
+        pass
 
 
 def build_demo_json() -> dict:
@@ -27,13 +51,14 @@ def build_demo_json() -> dict:
         fx = fx_returns if (h.tracking.index and not h.tracking.currency_hedged) else []
         funds.append(analyze_fund(h, nav_map[h.code], quote_map.get(h.code), idx, fx, settings))
     rep = build_report(funds, settings, market_brief=brief, as_of=datetime(2026, 6, 19, 9, 0))
-    data = report_to_dict(rep, settings.report_title + "（演示数据）", "demo")
-    return data
+    return report_to_dict(rep, settings.report_title + "（演示数据）", "demo")
 
 
-def build_live_json(holdings_path: str = DEFAULT_HOLDINGS) -> dict:
+def build_live_json(holdings_path_override: Optional[str] = None) -> dict:
     settings = load_settings(DEFAULT_SETTINGS)
-    holdings = load_holdings(holdings_path)
+    path = holdings_path_override or holdings_path()
+    _ensure_holdings_file(path)
+    holdings = load_holdings(path)
     if not holdings:
         return {
             "mode": "live", "empty": True,
@@ -51,18 +76,24 @@ def build_live_json(holdings_path: str = DEFAULT_HOLDINGS) -> dict:
 # 持仓读写（供前端编辑器）
 # ----------------------------------------------------------------------------
 
-def read_holdings_raw(path: str = DEFAULT_HOLDINGS) -> List[dict]:
-    src = path if os.path.exists(path) else None
-    if not src:
+def read_holdings_raw(path: Optional[str] = None) -> List[dict]:
+    path = path or holdings_path()
+    _ensure_holdings_file(path)
+    if not os.path.exists(path):
         return []
-    with open(src, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     items = raw.get("holdings", raw if isinstance(raw, list) else [])
     return items or []
 
 
 def read_example_holdings() -> List[dict]:
-    return read_holdings_raw(EXAMPLE_HOLDINGS)
+    src = EXAMPLE_HOLDINGS if os.path.exists(EXAMPLE_HOLDINGS) else None
+    if not src:
+        return []
+    with open(src, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    return raw.get("holdings", []) or []
 
 
 def _clean_holding(d: dict) -> dict:
@@ -99,7 +130,8 @@ def _clean_holding(d: dict) -> dict:
     return out
 
 
-def save_holdings(holdings: List[dict], path: str = DEFAULT_HOLDINGS) -> int:
+def save_holdings(holdings: List[dict], path: Optional[str] = None) -> int:
+    path = path or holdings_path()
     cleaned = [_clean_holding(h) for h in holdings if str(h.get("code", "")).strip()]
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:

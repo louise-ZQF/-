@@ -1,0 +1,29 @@
+# Render 蓝图（Blueprint）—— 在 Render 控制台 New + → Blueprint → 选本仓库即可。
+# 文档见 DEPLOY.md。
+services:
+  - type: web
+    name: fund-analyzer
+    runtime: python
+    plan: free                # 免费档（会休眠、文件系统临时）
+    region: singapore         # 新加坡，离中国较近
+    buildCommand: pip install -r requirements-deploy.txt
+    startCommand: gunicorn -b 0.0.0.0:$PORT -w 2 --timeout 120 wsgi:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: APP_PASSWORD     # ★ 公网必填：登录密码（在控制台填写，不要写进仓库）
+        sync: false
+      - key: APP_USERNAME     # 可选：登录用户名
+        sync: false
+      - key: HOLDINGS_YAML    # 可选：把 holdings.yaml 全文粘进来（免费档无持久盘时用它保存持仓）
+        sync: false
+      # —— 以下为可选：让线上也能发每日邮件 ——
+      - key: SMTP_PROVIDER
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_TO
+        sync: false
