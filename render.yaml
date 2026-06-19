@@ -6,13 +6,15 @@ services:
     runtime: python
     plan: free                # 免费档（会休眠、文件系统临时）
     region: singapore         # 新加坡，离中国较近
-    buildCommand: pip install -r requirements-deploy.txt
+    buildCommand: apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-chi-sim && pip install -r requirements-deploy.txt
     startCommand: gunicorn -b 0.0.0.0:$PORT -w 2 --timeout 120 wsgi:app
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: APP_PASSWORD     # ★ 公网必填：登录密码（在控制台填写，不要写进仓库）
+        sync: false
+      - key: DEEPSEEK_API_KEY  # 可选：DeepSeek API 密钥，用于 AI 智能分析功能
         sync: false
       - key: APP_USERNAME     # 可选：登录用户名
         sync: false
