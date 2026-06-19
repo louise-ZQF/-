@@ -1,116 +1,42 @@
 """量化多因子评分体系。
 
-六大因子，每项 0-100 分，加权合成综合评分：
-  - 动量因子 (25%): 多时间框架收益 + 加速度
-  - 趋势质量 (20%): MACD + ADX + 均线排列
-  - 估值因子 (15%): 历史分位 + 估值区间
-  - 风险调整收益 (20%): Sharpe + Sortino + Calmar
-  - 波动率状态 (10%): 波动扩张/收缩
-  - 回撤恢复 (10%): 最大回撤深度 + 恢复速度
-
-用法:
-    scores = compute_factor_scores(navs)
-    # scores.momentum → 85 (0-100)
-    # scores.composite → 72 (0-100 加权综合)
+统一使用 fund_analyzer.indicators 中的函数（sma/ema/rsi/returns/max_dd/sharpe等），
+因子层只做评分映射，不重复实现统计函数。
 """
 from __future__ import annotations
 
 import math
+import statistics
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
+
+from . import indicators as ind
 
 
 @dataclass
 class FactorScores:
     """单只基金的因子评分。"""
-    # 子因子 0-100
     momentum: float = 50.0
     trend_quality: float = 50.0
     value: float = 50.0
     risk_adjusted: float = 50.0
     vol_regime: float = 50.0
     drawdown_recovery: float = 50.0
-
-    # 综合评分 0-100
     composite: float = 50.0
-
-    # 各因子文字解读
     notes: List[str] = field(default_factory=list)
-
-    # 加权综合的文字总结
     summary: str = ""
-
-    # 用于图表展示
     labels: tuple = ("动量", "趋势质量", "估值", "风险调整", "波动状态", "回撤恢复")
 
 
-# 因子权重
 WEIGHTS = {
-    "momentum": 0.25,
-    "trend_quality": 0.20,
-    "value": 0.15,
-    "risk_adjusted": 0.20,
-    "vol_regime": 0.10,
-    "drawdown_recovery": 0.10,
+    "momentum": 0.25, "trend_quality": 0.20, "value": 0.15,
+    "risk_adjusted": 0.20, "vol_regime": 0.10, "drawdown_recovery": 0.10,
 }
 
-
-# ---------------------------------------------------------------------------
-# 工具函数
-# ---------------------------------------------------------------------------
 
 def _returns_from_navs(navs: Sequence[float]) -> List[float]:
     """净值 → 日收益率序列。"""
     return [navs[i] / navs[i - 1] - 1.0 for i in range(1, len(navs)) if navs[i - 1]]
-
-
-def _sma(data: Sequence[float], window: int) -> Optional[float]:
-    if len(data) < window:
-        return None
-    return sum(data[-window:]) / window
-
-
-def _ema(data: Sequence[float], window: int) -> List[float]:
-    """返回 EMA 序列（与 data 等长）。"""
-    if len(data) < 2:
-        return list(data)
-    k = 2.0 / (window + 1)
-    result = [data[0]]
-    for x in data[1:]:
-        result.append(x * k + result[-1] * (1 - k))
-    return result
-
-
-def _std(data: Sequence[float]) -> float:
-    if len(data) < 2:
-        return 0.0
-    mean = sum(data) / len(data)
-    return math.sqrt(sum((x - mean) ** 2 for x in data) / (len(data) - 1))
-
-
-def _max_drawdown(navs: Sequence[float]) -> Tuple[float, int]:
-    """返回 (最大回撤小数, 从峰值到谷底的天数)。"""
-    peak = navs[0]
-    max_dd = 0.0
-    peak_idx = 0
-    dd_days = 0
-    for i, nav in enumerate(navs):
-        if nav > peak:
-            peak = nav
-            peak_idx = i
-        dd = (nav - peak) / peak
-        if dd < max_dd:
-            max_dd = dd
-            dd_days = i - peak_idx
-    return max_dd, dd_days
-
-
-def _downside_deviation(rets: Sequence[float], mar: float = 0.0) -> float:
-    """下行标准差（只计负收益）。"""
-    downs = [min(r - mar, 0) ** 2 for r in rets]
-    if not downs:
-        return 0.0
-    return math.sqrt(sum(downs) / len(downs))
 
 
 # ---------------------------------------------------------------------------
@@ -154,16 +80,23 @@ def _trend_quality_score(navs: Sequence[float]) -> Tuple[float, str]:
     if len(navs) < 60:
         return 50.0, "数据不足"
 
-    # MACD (12/26/9)
-    ema12 = _ema(navs, 12)
-    ema26 = _ema(navs, 26)
+    # MACD (12/26/9) — 需要 EMA 序列，本地实现
+    def _ema_seq(seq, w):
+        if len(seq) < 2: return list(seq)
+        k = 2.0 / (w + 1)
+        out = [seq[0]]
+        for x in seq[1:]: out.append(x * k + out[-1] * (1 - k))
+        return out
+
+    ema12 = _ema_seq(navs, 12)
+    ema26 = _ema_seq(navs, 26)
     macd_line = ema12[-1] - ema26[-1]
-    signal = _ema([ema12[i] - ema26[i] for i in range(len(navs))], 9)
+    signal = _ema_seq([ema12[i] - ema26[i] for i in range(len(navs))], 9)
     macd_hist = macd_line - signal[-1]
 
     # 均线排列：多/空/纠缠
-    ma20 = _sma(navs, 20)
-    ma60 = _sma(navs, 60)
+    ma20 = ind.sma(navs, 20)
+    ma60 = ind.sma(navs, 60)
     if ma20 and ma60 and navs[-1]:
         if navs[-1] > ma20 > ma60:
             alignment = 1.0  # 多头
@@ -239,15 +172,17 @@ def _risk_adjusted_score(rets: Sequence[float]) -> Tuple[float, str]:
 
     # 年化
     ann_ret = sum(rets) / len(rets) * 252
-    ann_vol = _std(rets) * math.sqrt(252)
+    ann_vol = statistics.stdev(rets) * math.sqrt(252) if len(rets) > 1 else 0.0
     sharpe = (ann_ret - 0.02) / max(ann_vol, 0.001)  # rf=2%
 
-    # Sortino
-    dd = _downside_deviation(rets) * math.sqrt(252)
-    sortino = (ann_ret - 0.02) / max(dd, 0.001)
+    # Sortino: 下行标准差
+    downs = [min(r, 0) ** 2 for r in rets]
+    dd_std = math.sqrt(sum(downs) / len(downs)) if downs else 0.0
+    sortino = (ann_ret - 0.02) / max(dd_std * math.sqrt(252), 0.001)
 
-    # Calmar（需要 navs 算最大回撤，传不进来用 rets 近似）
-    calmar = ann_ret / max(abs(min(rets)) * 252 ** 0.5, 0.001)
+    # Calmar: 用真实最大回撤
+    md = ind.max_drawdown(navs) or -0.01
+    calmar = ann_ret / max(abs(md), 0.001)
 
     # 合成：Sharpe(0.4) + Sortino(0.3) + Calmar(0.3)
     # 每个指标映射到 0-100
@@ -277,8 +212,8 @@ def _vol_regime_score(rets: Sequence[float]) -> Tuple[float, str]:
         return 50.0, "数据不足"
 
     # 近期 vs 远期 波动率
-    recent_vol = _std(rets[-10:]) if len(rets) >= 10 else _std(rets)
-    older_vol = _std(rets[-40:-10]) if len(rets) >= 40 else _std(rets)
+    recent_vol = (statistics.stdev(rets[-10:]) if len(rets) >= 10 else 0.0) if len(rets) >= 10 else _std(rets)
+    older_vol = (statistics.stdev(rets[-40:-10]) if len(rets) >= 40 else 0.0) if len(rets) >= 40 else _std(rets)
     vol_ratio = recent_vol / max(older_vol, 0.0001)
 
     # 波动收缩 = 高分（市场稳定），波动扩张 = 低分
