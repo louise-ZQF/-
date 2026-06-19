@@ -26,11 +26,27 @@ def score_passive_index(fund: dict, tracking_metrics: dict) -> dict:
     tracking_metrics 来自 benchmark_mapper.compute_tracking_metrics。
     """
 
+    if not tracking_metrics:
+        return {
+            "model": "passive_index",
+            "scores": {},
+            "composite": 0,
+            "risks": ["缺少基准对齐数据，无法评分"],
+            "data_missing": True,
+        }
+
     scores = {}
 
     # ---- 1. 跟踪质量 (40分) ----
     tg = tracking_metrics or {}
-    te = tg.get("tracking_error", 0.05)     # 跟踪误差
+    te = tg.get("tracking_error")
+    if te is None:
+        return {
+            "model": "passive_index",
+            "composite": 0,
+            "risks": ["跟踪误差数据缺失"],
+            "data_missing": True,
+        }
     td = tg.get("tracking_diff", -0.01)      # 跟踪差异（年化）
     beta = tg.get("beta", 1.0)
     r2 = tg.get("r_squared", 0.9)
@@ -54,21 +70,29 @@ def score_passive_index(fund: dict, tracking_metrics: dict) -> dict:
     )
 
     # ---- 2. 成本 (20分) ----
-    fee = fund.get("annual_fee", 0.008)
-    # 费率越低越好。fee ≤ 0.2% → 100，fee ≥ 2% → 0
-    scores["cost"] = round(max(0, min(100, (0.02 - fee) / 0.018 * 100)), 1)
+    fee = fund.get("annual_fee")
+    if fee is None:
+        scores["cost"] = 50  # neutral, data missing
+        fund.setdefault("data_quality", {})["fee_missing"] = True
+    else:
+        # 费率越低越好。fee ≤ 0.2% → 100，fee ≥ 2% → 0
+        scores["cost"] = round(max(0, min(100, (0.02 - fee) / 0.018 * 100)), 1)
 
     # ---- 3. 运行稳定性 (15分) ----
-    size = fund.get("fund_size", 0)
-    # 规模：2亿-200亿适合。太小清盘风险，太大不好管
-    if size < 2e8:
-        size_score = size / 2e8 * 50  # 0-50
-    elif size < 5e9:
-        size_score = 80  # 最佳区间
-    elif size < 2e10:
-        size_score = 70
+    size = fund.get("fund_size")
+    if size is None:
+        size_score = 50  # neutral, data missing
+        fund.setdefault("data_quality", {})["size_missing"] = True
     else:
-        size_score = 50  # 太大
+        # 规模：2亿-200亿适合。太小清盘风险，太大不好管
+        if size < 2e8:
+            size_score = size / 2e8 * 50  # 0-50
+        elif size < 5e9:
+            size_score = 80  # 最佳区间
+        elif size < 2e10:
+            size_score = 70
+        else:
+            size_score = 50  # 太大
     scores["stability"] = round(size_score * 0.6 + 40, 1)  # 基础分40
 
     # ---- 4. 交易条件 (10分) ----
@@ -173,10 +197,23 @@ def score_active_equity(fund: dict, tracking_metrics: dict,
     else:
         sortino_score = 50
 
-    # 最大回撤
+    # 最大回撤 — 基于真实净值计算
     from . import indicators as ind
-    md_score = 50  # default
-    scores["downside_control"] = round(dc_score * 0.4 + sortino_score * 0.4 + md_score * 0.2, 1)
+    max_dd = 0
+    navs_for_dd = fund.get("navs", [])
+    if navs_for_dd and len(navs_for_dd) > 1:
+        peak = navs_for_dd[0]
+        for nav in navs_for_dd:
+            if nav > peak: peak = nav
+            dd = (nav - peak) / peak
+            if dd < max_dd: max_dd = dd
+        md_score = max(0, min(100, (0.5 + max_dd) / 0.5 * 100))
+    else:
+        md_score = None
+    if md_score is not None:
+        scores["downside_control"] = round(dc_score * 0.35 + sortino_score * 0.35 + md_score * 0.3, 1)
+    else:
+        scores["downside_control"] = round(dc_score * 0.5 + sortino_score * 0.5, 1)
 
     # ---- 3. 业绩稳定性 (20分) ----
     # 正超额月份比例
@@ -189,16 +226,34 @@ def score_active_equity(fund: dict, tracking_metrics: dict,
     scores["consistency"] = round(consistency_score, 1)
 
     # ---- 4. 基金经理与风格 (10分) ----
-    mgr_years = fund.get("manager_years", 1)
-    mgr_score = min(100, mgr_years * 20)  # 每年20分，5年满分
-    scores["manager_style"] = round(mgr_score * 0.5 + 40, 1)
+    mgr_years = fund.get("manager_years", 0)
+    if mgr_years > 0:
+        scores["manager_style"] = min(100, mgr_years * 20)
+    else:
+        scores["manager_style"] = 50
 
     # ---- 5. 成本 (10分) ----
-    fee = fund.get("annual_fee", 0.015)
-    scores["cost"] = round(max(0, min(100, (0.03 - fee) / 0.028 * 100)), 1)
+    fee = fund.get("annual_fee")
+    if fee is None:
+        scores["cost"] = 50  # neutral, data missing
+        fund.setdefault("data_quality", {})["fee_missing"] = True
+    else:
+        scores["cost"] = round(max(0, min(100, (0.03 - fee) / 0.028 * 100)), 1)
 
-    # ---- 6. 运行质量 (10分) ----
-    scores["operational"] = 60  # baseline
+    # ---- 6. 运行质量 (10分) — 基于真实规模 ----
+    size = fund.get("fund_size")
+    if size is not None:
+        if size < 5e7:
+            op_score = 20
+        elif size < 2e8:
+            op_score = 50
+        elif size < 1e9:
+            op_score = 80
+        else:
+            op_score = 70
+    else:
+        op_score = 50
+    scores["operational"] = op_score
 
     # ---- 加权综合 ----
     composite = sum(
