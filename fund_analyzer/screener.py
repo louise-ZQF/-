@@ -13,7 +13,6 @@
 """
 from __future__ import annotations
 
-import json
 import re
 import statistics
 import math
@@ -93,15 +92,14 @@ def _fetch_rank(http: HttpClient, fund_type: str = "all", sort_by: str = "1nzf",
         return []
 
     # 返回格式: var rankData = {datas:[...], allRecords:...}
-    m = re.search(r'var\s+rankData\s*=\s*(\{.*\})', text, re.DOTALL)
+    # 注意：天天基金的 JSON key 没有引号，不能用 json.loads
+    # 直接用正则提取 datas 数组中的每个字符串
+    m = re.search(r'datas:\s*\[(.*?)\]\s*,', text, re.DOTALL)
     if not m:
         return []
-    try:
-        data = json.loads(m.group(1))
-    except json.JSONDecodeError:
-        return []
-
-    rows = data.get("datas", [])
+    # 按 \" 分割每个基金条目
+    entries = re.findall(r'"([^"]+)"', m.group(1))
+    rows = entries
     results = []
     for row in rows:
         # 格式: "000001,基金名称,基金类型,近1年涨幅,近3年涨幅,...,"
