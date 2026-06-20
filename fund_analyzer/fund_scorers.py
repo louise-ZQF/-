@@ -55,7 +55,7 @@ def score_passive_index(fund: dict, tracking_metrics: dict) -> dict:
     te_score = max(0, min(100, (0.10 - te) / 0.08 * 100))
 
     # 跟踪差异稳定性：越接近稳定负值（费用损耗）越好
-    td_expected = -fund.get("annual_fee", 0.006)  # 预期费用损耗
+    td_expected = -(fund.get("annual_fee") or 0.006)  # 预期费用损耗
     td_deviation = abs(abs(td) - abs(td_expected))
     td_score = max(0, min(100, (0.02 - td_deviation) / 0.02 * 100))
 
