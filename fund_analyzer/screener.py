@@ -55,6 +55,8 @@ class ScreenedFund:
     ret_1y: float = 0.0
     ret_3y: float = 0.0
     sharpe: float = 0.0
+    annual_fee: Optional[float] = None
+    fund_size: Optional[float] = None
 
 
 @dataclass
@@ -159,6 +161,28 @@ def _fetch_diverse_universe(http: HttpClient, fund_type: str = "qdii") -> List[d
     return unique
 
 
+def _fetch_from_fundlist(http: HttpClient, em: EastMoney) -> List[dict]:
+    """从全市场基金列表获取候选（无排序偏差）。"""
+    all_funds = em.all_funds()
+    if not all_funds:
+        return _fetch_diverse_universe(http, "qdii")  # fallback
+
+    # Filter by type keywords for QDII
+    qdii_keywords = ["QDII", "qdii", "海外", "全球", "纳斯达克", "标普", "道琼斯"]
+    results = []
+    for f in all_funds:
+        name = f.get("name", "")
+        ftype = f.get("type", "")
+        if any(kw in name for kw in qdii_keywords) or "QDII" in ftype:
+            results.append({
+                "code": f["code"],
+                "name": f["name"],
+                "ret_1y": 0,  # Will be computed from NAV
+                "ret_3y": 0,
+            })
+    return results[:100]  # Top 100 QDII funds
+
+
 # ============================================================================
 # 新版筛选流程
 # ============================================================================
@@ -182,7 +206,7 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
     # Step 1: 获取候选基金
     candidates = []
     if category == "us_qdii":
-        candidates = _fetch_diverse_universe(http, "qdii")
+        candidates = _fetch_from_fundlist(http, em)
     elif category == "a_stock":
         for ft in ["gp", "hh", "zs"]:
             candidates += _fetch_diverse_universe(http, ft)
@@ -449,6 +473,8 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             ret_1y=f.get("ret_1y", 0),
             ret_3y=f.get("ret_3y", 0),
             sharpe=f.get("_sharpe", 0),
+            annual_fee=f.get("annual_fee"),
+            fund_size=f.get("fund_size"),
         ))
 
     return results

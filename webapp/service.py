@@ -471,7 +471,8 @@ def run_screener(category: str = "us_qdii") -> dict:
          "peer_rank": f.peer_rank, "model_type": f.model_type,
          "detail_scores": f.detail_scores,
          "strengths": f.strengths, "risks": f.risks,
-         "ret_1y": f.ret_1y, "ret_3y": f.ret_3y, "sharpe": f.sharpe}
+         "ret_1y": f.ret_1y, "ret_3y": f.ret_3y, "sharpe": f.sharpe,
+         "annual_fee": f.annual_fee, "fund_size": f.fund_size}
         for f in funds
     ]
 

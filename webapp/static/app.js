@@ -903,6 +903,13 @@ function renderScreener(funds){
     const ds=f.detail_scores||{};
     const strengthStr=(f.strengths||[]).slice(0,3).join(' · ');
     const riskStr=(f.risks||[]).slice(0,2).join(' · ');
+    // Restore data quality display (now with real data from improved scrapers)
+    const dqItems = [];
+    if (f.annual_fee === null || f.annual_fee === undefined) dqItems.push('费率待抓取');
+    if (f.fund_size === null || f.fund_size === undefined) dqItems.push('规模待抓取');
+    const dqHtml = dqItems.length > 0
+      ? `<div class="wl-risk-opp"><span class="wl-risk">⚠️ 待完善: ${dqItems.join(', ')}（部分数据源正在接入中）</span></div>`
+      : '';
     return `<div class="wl-card">
       <div class="wl-head">
         <span class="scr-rank">#${i+1}</span>
@@ -921,6 +928,7 @@ function renderScreener(funds){
       </div>
       ${strengthStr?`<div class="wl-advice">✅ ${esc(strengthStr)}</div>`:''}
       ${riskStr?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ ${esc(riskStr)}</span></div>`:''}
+      ${dqHtml}
     </div>`;
   }).join('');
 }
