@@ -268,11 +268,17 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
         f["detail_scores"] = result["scores"]
         f["composite_score"] = result["composite"]
 
-    # Step 6: 同类内部稳健标准化
-    score_metrics = ["composite_score"]
-    passed = normalize_funds(passed, score_metrics, group_by="peer_group")
+    # Step 6: 同类内部稳健标准化（composite_score + 各子指标）
+    # 被动基金按 benchmark_code 分组，主动基金按地区+类型分组
+    for f in passed:
+        fc = f["fund_class"]
+        if fc.fund_type == "passive_index":
+            f["peer_group"] = f"{fc.benchmark_code}_{fc.fund_type}"
+        else:
+            f["peer_group"] = f"{fc.asset_region}_{fc.fund_type}"
 
-    # 更新 composite_score 为标准化的
+    # 标准化所有基金的 composite_score
+    passed = normalize_funds(passed, ["composite_score"], group_by="peer_group")
     for f in passed:
         f["composite_score"] = f.get("composite_score_score", f["composite_score"])
 
@@ -287,6 +293,18 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
     # Step 8: 去重
     passed = deduplicate_share_classes(passed)
     passed = deduplicate_same_index(passed)
+
+    # 高相关去重：计算各基金日收益，移除与已保留基金高度相关的
+    returns_map = {}
+    for f in passed:
+        navs = f.get("navs", [])
+        if len(navs) >= 20:
+            rets = [navs[i]/navs[i-1]-1 for i in range(1, len(navs)) if navs[i-1]]
+            if rets:
+                returns_map[f["code"]] = rets
+    if returns_map:
+        passed.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+        passed = remove_high_correlation(passed, returns_map, threshold=0.95)
 
     # 按 final_score 排序
     passed.sort(key=lambda x: x["final_score"], reverse=True)
