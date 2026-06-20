@@ -139,6 +139,27 @@ def score_passive_index(fund: dict, tracking_metrics: dict) -> dict:
 
 
 # ============================================================================
+# 池内百分位标准化工具
+# ============================================================================
+
+def _pool_percentile(values: List[float], higher_better: bool = True) -> List[float]:
+    """池内百分位 → 0-100 分。"""
+    if not values or len(values) < 3:
+        return [50.0] * len(values)
+
+    # Sort and compute rank percentile
+    indexed = sorted(enumerate(values), key=lambda x: x[1])
+    n = len(indexed)
+    scores = [0.0] * n
+    for rank, (orig_idx, _) in enumerate(indexed):
+        pct = rank / (n - 1)  # 0 to 1
+        if not higher_better:
+            pct = 1 - pct
+        scores[orig_idx] = round(pct * 100, 1)
+    return scores
+
+
+# ============================================================================
 # 主动权益基金评分（100分）
 # ============================================================================
 
@@ -164,11 +185,13 @@ def score_active_equity(fund: dict, tracking_metrics: dict,
     # ---- 1. 基准调整后收益 (30分) ----
     # 信息比率
     ir = tg.get("info_ratio", 0)
-    ir_score = max(0, min(100, 50 + ir * 25))
+    # 原始值，由 screen_funds_v2 做池内百分位标准化
+    ir_score = ir  # raw, will be normalized in pool
 
     # 超额收益（年化）
     alpha = tg.get("alpha", 0)
-    alpha_score = max(0, min(100, 50 + alpha * 200))
+    # 原始值，由 screen_funds_v2 做池内百分位标准化
+    alpha_score = alpha  # raw, will be normalized in pool
 
     scores["benchmark_adj_return"] = round(ir_score * 0.5 + alpha_score * 0.5, 1)
 

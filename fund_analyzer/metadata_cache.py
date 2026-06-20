@@ -111,13 +111,53 @@ def _scrape_fees(http, code: str, name: str = ""):
     return (None, False)
 
 
+def _scrape_fees_v2(http, code: str) -> Optional[float]:
+    """Multi-source fee scraping. Returns combined annual fee (mgmt + cust) or None."""
+    import re
+
+    # Source 1: Try the F10DataApi for fee info
+    try:
+        url = f"http://fundf10.eastmoney.com/F10DataApi.aspx?type=jjfl&code={code}"
+        text = http.get(url, cache_key=f"fee_v2:{code}",
+                        headers={"Referer": "http://fund.eastmoney.com/"})
+        if text:
+            mgmt = cust = 0.0
+            found = False
+            for pattern, target in [
+                (r'管理费[^<]*</t[dh]>\s*<t[dh][^>]*>\s*([\d.]+)\s*%', 'mgmt'),
+                (r'托管费[^<]*</t[dh]>\s*<t[dh][^>]*>\s*([\d.]+)\s*%', 'cust'),
+            ]:
+                m = re.search(pattern, text)
+                if m and target == 'mgmt':
+                    mgmt = float(m.group(1)) / 100
+                    found = True
+                elif m and target == 'cust':
+                    cust = float(m.group(1)) / 100
+                    found = True
+            if found:
+                return round(mgmt + cust, 4)
+    except Exception:
+        pass
+
+    return None
+
+
 def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
     """获取基金元数据。优先读 SQLite，否则抓取 pingzhongdata JS。"""
-    # 读 SQLite 缓存
+    # 读 SQLite 缓存 (up to 7 days old)
     if not force_refresh:
         cached = get_meta(code)
         if cached:
-            return cached
+            cached_date_str = cached.get("updated_at")
+            if cached_date_str:
+                try:
+                    cached_date = date.fromisoformat(cached_date_str)
+                    if (date.today() - cached_date).days < 7:
+                        return cached
+                except ValueError:
+                    pass
+            else:
+                return cached
 
     # 抓取
     info = {}
@@ -134,21 +174,55 @@ def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
             m = re.search(r'fS_name\s*=\s*"([^"]+)"', js_text)
             if m:
                 info["name"] = m.group(1)
-            # 经理名称
+            # 经理名称 (via simple variable, fallback)
             m = re.search(r'fS_manager\s*=\s*"([^"]+)"', js_text)
             if m:
                 info["manager_name"] = m.group(1)
-            # 经理任职起始日期
+            # 经理任职起始日期 (fallback)
             m = re.search(r'fS_managerStartDate\s*=\s*"(\d{4}-\d{2}-\d{2})"', js_text)
             if m:
                 info["manager_start_date"] = m.group(1)
+
+            # Extract fund size from Data_fluctuationScale
+            m = re.search(r'Data_fluctuationScale\s*=\s*(\{.*?\});', js_text, re.DOTALL)
+            if m:
+                try:
+                    import json as _json
+                    scale_data = _json.loads(m.group(1))
+                    series_list = scale_data.get("series", [])
+                    for s in series_list:
+                        if "资产规模" in s.get("name", ""):
+                            data_points = s.get("data", [])
+                            for v in reversed(data_points):
+                                if v is not None and v > 0:
+                                    info["fund_size"] = float(v) * 1e8
+                                    break
+                except Exception:
+                    pass
+
+            # Extract manager info from Data_currentFundManager (structured JSON)
+            m = re.search(r'Data_currentFundManager\s*=\s*(\{.*?\});', js_text, re.DOTALL)
+            if m:
+                try:
+                    import json as _json
+                    mgr_data = _json.loads(m.group(1))
+                    info["manager_name"] = mgr_data.get("name", "")
+                    start_date = mgr_data.get("startDate", "")
+                    if start_date:
+                        info["manager_start_date"] = start_date
+                        from datetime import datetime
+                        try:
+                            sd = datetime.strptime(start_date[:10], "%Y-%m-%d").date()
+                            info["manager_years"] = round((date.today() - sd).days / 365.25, 1)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
     except Exception:
         pass
 
-    fee, estimated = _scrape_fees(http, code, info.get("name"))
+    fee = _scrape_fees_v2(http, code)
     info["annual_fee"] = fee
-    if fee is not None and estimated:
-        info["annual_fee_estimated"] = True
 
     # 存入 SQLite
     upsert_meta(code, info)

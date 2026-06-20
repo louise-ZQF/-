@@ -76,14 +76,14 @@ def get_meta(code: str) -> Optional[dict]:
     """读取基金元数据。"""
     with _conn() as db:
         row = db.execute(
-            "SELECT name, inception_date, fund_type, annual_fee, fund_size FROM fund_meta WHERE code=?",
+            "SELECT name, inception_date, fund_type, annual_fee, fund_size, updated_at FROM fund_meta WHERE code=?",
             (code,)
         ).fetchone()
         if not row:
             return None
         return {
             "name": row[0], "inception_date": row[1], "fund_type": row[2],
-            "annual_fee": row[3], "fund_size": row[4],
+            "annual_fee": row[3], "fund_size": row[4], "updated_at": row[5],
         }
 
 
