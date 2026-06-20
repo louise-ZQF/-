@@ -15,6 +15,7 @@ import re
 from datetime import date, datetime
 from typing import List, Optional
 
+from ..db import get_nav_count, get_nav_history, insert_nav_batch
 from ..models import NavPoint, Quote
 from .base import HttpClient
 
@@ -149,9 +150,24 @@ class EastMoney:
     _PAGE_SIZE = 20  # API 单页最大条数
 
     def history(self, code: str, size: int = 300) -> List[NavPoint]:
-        """获取历史净值，自动分页。"""
-        points: List[NavPoint] = []
+        """获取历史净值，自动分页。优先读 SQLite 缓存。"""
         needed = min(size, 300)  # 最多 300 条
+
+        # 检查 SQLite 缓存
+        if get_nav_count(code) >= needed:
+            rows = get_nav_history(code, limit=needed)
+            return [
+                NavPoint(
+                    d=datetime.strptime(r["date"], "%Y-%m-%d").date(),
+                    nav=r["nav"],
+                    cum_nav=r["cum_nav"],
+                    change=(r["change_pct"] / 100.0 if r["change_pct"] is not None else None),
+                )
+                for r in rows
+            ]
+
+        # 从 API 抓取
+        points: List[NavPoint] = []
         pages = (needed + self._PAGE_SIZE - 1) // self._PAGE_SIZE
         for page in range(1, pages + 1):
             page_size = min(self._PAGE_SIZE, needed - len(points))
@@ -185,4 +201,17 @@ class EastMoney:
                     change=(chg / 100.0 if chg is not None else None),
                 ))
         points.sort(key=lambda p: p.d)
+
+        # 存入 SQLite
+        nav_dicts = [
+            {
+                "date": p.d.isoformat(),
+                "nav": p.nav,
+                "cum_nav": p.cum_nav,
+                "change_pct": (p.change * 100.0 if p.change is not None else None),
+            }
+            for p in points
+        ]
+        insert_nav_batch(code, nav_dicts)
+
         return points

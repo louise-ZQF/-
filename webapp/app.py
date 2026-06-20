@@ -16,9 +16,14 @@ import traceback
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
+from fund_analyzer.db import init_db
+
 from . import service
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+# Global task store for async screener
+_screener_tasks = {}  # {task_id: {"status": "running"|"done"|"error", "progress": 0.0, "result": None, "error": None}}
 
 
 def _auth_ok() -> bool:
@@ -34,6 +39,7 @@ def _auth_ok() -> bool:
 
 
 def create_app() -> Flask:
+    init_db()
     app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 
     @app.before_request
@@ -237,6 +243,34 @@ def create_app() -> Flask:
 
     # ---- 基金筛选 ----
 
+    @app.post("/api/screener/start")
+    def screener_start():
+        import uuid, threading
+        task_id = str(uuid.uuid4())[:8]
+        category = request.args.get("category", "us-qdii")
+        valid = {"us-qdii": "us_qdii", "a-stock": "a_stock"}
+        cat = valid.get(category, "us_qdii")
+
+        _screener_tasks[task_id] = {"status": "running", "progress": 0, "result": None}
+
+        def run():
+            try:
+                _screener_tasks[task_id]["progress"] = 0.1
+                data = service.run_screener(cat)
+                _screener_tasks[task_id] = {"status": "done", "progress": 1.0, "result": data["funds"]}
+            except Exception as e:
+                _screener_tasks[task_id] = {"status": "error", "progress": 0, "error": str(e)}
+
+        threading.Thread(target=run, daemon=True).start()
+        return jsonify({"ok": True, "task_id": task_id})
+
+    @app.get("/api/screener/status/<task_id>")
+    def screener_status(task_id):
+        task = _screener_tasks.get(task_id)
+        if not task:
+            return jsonify({"error": "任务不存在"}), 404
+        return jsonify(task)
+
     @app.get("/api/screener/<category>")
     def screener(category):
         """筛选基金: ?category=us-qdii|a-stock"""
@@ -245,8 +279,8 @@ def create_app() -> Flask:
         if not cat:
             return jsonify({"error": "请指定 category=us-qdii 或 a-stock"}), 400
         try:
-            results = service.run_screener(cat)
-            return jsonify({"ok": True, "funds": results, "count": len(results)})
+            data = service.run_screener(cat)
+            return jsonify({"ok": True, "funds": data["funds"], "count": len(data["funds"]), "backtest": data.get("backtest")})
         except Exception as e:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500

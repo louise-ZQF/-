@@ -434,8 +434,9 @@ def remove_watch_item(code: str) -> dict:
 # 基金筛选
 # ---------------------------------------------------------------------------
 
-def run_screener(category: str = "us_qdii") -> list:
+def run_screener(category: str = "us_qdii") -> dict:
     """运行新版基金筛选器。"""
+    from fund_analyzer.backtest import quick_backtest
     from fund_analyzer.config import load_settings
     from fund_analyzer.datasource.base import HttpClient
     from fund_analyzer.datasource.eastmoney import EastMoney
@@ -452,7 +453,7 @@ def run_screener(category: str = "us_qdii") -> list:
     mi = MarketIndex(http)
     funds = screen_funds_v2(http, em, mi, category=category, top_n=20)
 
-    return [
+    fund_list = [
         {"code": f.code, "name": f.name, "fund_type": f.fund_type,
          "benchmark_name": f.benchmark_name, "composite_score": f.composite_score,
          "confidence": f.confidence, "final_score": f.final_score,
@@ -461,6 +462,10 @@ def run_screener(category: str = "us_qdii") -> list:
          "strengths": f.strengths, "risks": f.risks}
         for f in funds
     ]
+
+    backtest_result = quick_backtest(fund_list)
+
+    return {"funds": fund_list, "backtest": backtest_result}
 
 
 def generate_alerts(funds_raw: List[dict]) -> list:
