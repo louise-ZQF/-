@@ -172,9 +172,9 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             seen_codes.add(c["code"])
             unique.append(c)
 
-    # Step 2: 分类 + 获取数据
+    # Step 2: 分类 + 获取数据（限制50只，控制耗时）
     classified_funds = []
-    for c in unique:  # 分析所有候选
+    for c in unique[:50]:
         fc = classify_fund(c["code"], c["name"])
 
         # 拉净值
