@@ -46,8 +46,8 @@ def deduplicate_share_classes(funds: List[dict]) -> List[dict]:
     return [f for idx, f in enumerate(funds) if idx not in remove_indices]
 
 
-def deduplicate_same_index(funds: List[dict]) -> List[dict]:
-    """同一基准指数只保留综合质量最高的一只。"""
+def deduplicate_same_index(funds: List[dict], keep_top: int = 1) -> List[dict]:
+    """同一基准指数保留综合质量最高的 keep_top 只。"""
     from collections import defaultdict
     by_benchmark = defaultdict(list)
     for f in funds:
@@ -56,13 +56,11 @@ def deduplicate_same_index(funds: List[dict]) -> List[dict]:
 
     result = []
     for bm, group in by_benchmark.items():
-        if len(group) <= 1:
-            result.extend(group)
-        else:
-            # 保留综合分最高的
-            group.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
-            winner = group[0]
-            winner["dedup_note"] = f"同基准{bm}中排名第1/{len(group)}"
-            result.append(winner)
+        group.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
+        keep = group[:keep_top]
+        for i, f in enumerate(keep):
+            if len(group) > keep_top:
+                f["dedup_note"] = f"同基准{bm}中排名第{i+1}/{len(group)}"
+        result.extend(keep)
 
     return result

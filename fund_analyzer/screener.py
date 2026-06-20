@@ -336,7 +336,8 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
 
     # Step 8: 去重
     passed = deduplicate_share_classes(passed)
-    passed = deduplicate_same_index(passed)
+    # 同指数去重只保留 top 3（不是1只），让用户有选择空间
+    passed = deduplicate_same_index(passed, keep_top=3)
 
     # 高相关去重：计算各基金日收益，移除与已保留基金高度相关的
     returns_map = {}
