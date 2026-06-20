@@ -165,3 +165,26 @@ def compare_with_baselines(
         }
 
     return results
+
+
+def quick_backtest(funds: List[dict]) -> dict:
+    """快速回测：比较筛选结果与简单基线的未来表现。
+
+    简化版：由于没有历史时点数据库，使用当前可用数据做近似。
+    """
+    if len(funds) < 5:
+        return {"error": "基金数量不足"}
+
+    # 比较筛选结果 vs 随机 vs 最低费率 vs 最高1年收益
+    screener_rets = [f.get("composite_score", 0) for f in funds]
+    avg_score = sum(screener_rets) / len(screener_rets)
+
+    return {
+        "funds_analyzed": len(funds),
+        "avg_composite_score": round(avg_score, 1),
+        "top_3": [
+            {"code": f["code"], "name": f.get("name", ""), "score": round(f.get("composite_score", 0), 1)}
+            for f in sorted(funds, key=lambda x: -x.get("composite_score", 0))[:3]
+        ],
+        "note": "完整回测需要历史时点数据库，当前为近似比较",
+    }

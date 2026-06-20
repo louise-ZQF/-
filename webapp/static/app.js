@@ -760,22 +760,38 @@ $$('.scr-cat').forEach(b=>b.addEventListener('click',()=>{scrCategory=b.dataset.
 $('#scrRunBtn')?.addEventListener('click', runScreener);
 
 async function runScreener(){
-  $('#scrStatus').textContent='筛选中…';
-  $('#scrResults').innerHTML='<div class="loading">正在从完整基金池拉数据+计算量化因子…</div>';
-  const start=Date.now();
-  const timer=setInterval(()=>{
-    const elapsed=Math.round((Date.now()-start)/1000);
-    $('#scrStatus').textContent=`筛选中… (${elapsed}s)`;
-  }, 2000);
+  $('#scrStatus').textContent='启动筛选…';
+  $('#scrResults').innerHTML='<div class="loading">正在从完整基金池拉数据…</div>';
+
   try{
-    const r=await fetch('/api/screener/'+scrCategory);
-    clearInterval(timer);
-    const d=await r.json();
-    if(d.error){ $('#scrStatus').textContent=d.error; return; }
-    $('#scrStatus').textContent=`筛选完成，共 ${d.count} 只基金 (耗时 ${Math.round((Date.now()-start)/1000)}s)`;
-    renderScreener(d.funds||[]);
+    // Start task
+    const r1=await fetch('/api/screener/start?category='+scrCategory, {method:'POST'});
+    const d1=await r1.json();
+    if(d1.error){ $('#scrStatus').textContent=d1.error; return; }
+
+    const taskId=d1.task_id;
+    const start=Date.now();
+
+    // Poll for completion
+    while(true){
+      await new Promise(r=>setTimeout(r, 2000));
+      const r2=await fetch('/api/screener/status/'+taskId);
+      const d2=await r2.json();
+
+      if(d2.status==='done'){
+        const elapsed=Math.round((Date.now()-start)/1000);
+        $('#scrStatus').textContent=`筛选完成，共 ${d2.result.length} 只基金 (${elapsed}s)`;
+        renderScreener(d2.result||[]);
+        return;
+      } else if(d2.status==='error'){
+        $('#scrStatus').textContent='筛选失败: '+(d2.error||'未知错误');
+        return;
+      } else {
+        const elapsed=Math.round((Date.now()-start)/1000);
+        $('#scrStatus').textContent=`筛选中… (${elapsed}s)`;
+      }
+    }
   }catch(e){
-    clearInterval(timer);
     $('#scrStatus').textContent='筛选失败: '+e.message;
   }
 }

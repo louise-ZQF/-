@@ -1,32 +1,14 @@
-"""基金元数据缓存：从天天基金 pingzhongdata JS 抓取成立日期 + fundf10 抓取年费率，存入本地 JSON。
+"""基金元数据缓存：从天天基金 pingzhongdata JS 抓取成立日期 + fundf10 抓取年费率，存入 SQLite。
 
 避免反复爬取，加速筛选器。
 """
 from __future__ import annotations
 
-import json
-import os
 import re
-from datetime import date, datetime
-from typing import Dict, Optional
+from datetime import date
+from typing import Optional
 
-CACHE_FILE = "data/fund_meta.json"
-
-
-def _load_cache() -> dict:
-    if not os.path.exists(CACHE_FILE):
-        return {}
-    try:
-        with open(CACHE_FILE) as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _save_cache(cache: dict):
-    os.makedirs("data", exist_ok=True)
-    with open(CACHE_FILE, "w") as f:
-        json.dump(cache, f, ensure_ascii=False, indent=2)
+from .db import get_meta, upsert_meta
 
 
 def _scrape_fees(http, code: str) -> Optional[float]:
@@ -58,19 +40,12 @@ def _scrape_fees(http, code: str) -> Optional[float]:
 
 
 def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
-    """获取基金元数据。优先读缓存（24h有效），否则抓取 pingzhongdata JS。"""
-    cache = _load_cache()
-
-    # 读缓存
-    if not force_refresh and code in cache:
-        entry = cache[code]
-        cached_at = entry.get("_ts", "")
-        try:
-            cached_date = datetime.strptime(cached_at[:10], "%Y-%m-%d").date()
-            if (date.today() - cached_date).days < 1:
-                return {k: v for k, v in entry.items() if not k.startswith("_")}
-        except (ValueError, TypeError):
-            pass
+    """获取基金元数据。优先读 SQLite，否则抓取 pingzhongdata JS。"""
+    # 读 SQLite 缓存
+    if not force_refresh:
+        cached = get_meta(code)
+        if cached:
+            return cached
 
     # 抓取
     info = {}
@@ -91,16 +66,10 @@ def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
         pass
 
     info["annual_fee"] = _scrape_fees(http, code)
-    info["_ts"] = date.today().isoformat()
-    cache[code] = info
 
-    # 只保留最近 1000 条
-    if len(cache) > 1000:
-        keys = sorted(cache.keys(), key=lambda k: cache[k].get("_ts", ""), reverse=True)
-        cache = {k: cache[k] for k in keys[:1000]}
-
-    _save_cache(cache)
-    return {k: v for k, v in info.items() if not k.startswith("_")}
+    # 存入 SQLite
+    upsert_meta(code, info)
+    return info
 
 
 def get_inception_date(http, code: str) -> Optional[str]:
