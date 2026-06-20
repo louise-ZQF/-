@@ -22,7 +22,7 @@ from .benchmark_mapper import (
 )
 from .hard_filters import apply_hard_filters
 from .robust_normalizer import normalize_funds
-from .fund_scorers import score_passive_index, score_active_equity
+from .fund_scorers import score_passive_index, score_active_equity, ACTIVE_WEIGHTS, _pool_percentile
 from .share_class_dedup import deduplicate_share_classes, deduplicate_same_index
 from .overlap_filter import remove_high_correlation
 from .confidence import compute_confidence, adjust_score_with_confidence
@@ -138,6 +138,27 @@ def _fetch_full_universe(http: HttpClient, fund_type: str = "qdii",
     return unique
 
 
+def _fetch_diverse_universe(http: HttpClient, fund_type: str = "qdii") -> List[dict]:
+    """多维度获取候选池：1年涨幅 + 3年涨幅 + 各取一页，并集去重。"""
+    all_funds = []
+    # 按多个维度各拉一页，避免单一排序偏差
+    for sort_key in ["1nzf", "3nzf"]:  # 近1年, 近3年
+        for page in [1, 2]:
+            rows = _fetch_rank(http, fund_type, sort_key, page, 50)
+            all_funds.extend(rows)
+            if len(rows) < 50:
+                break
+
+    # 去重
+    seen = set()
+    unique = []
+    for f in all_funds:
+        if f["code"] not in seen:
+            seen.add(f["code"])
+            unique.append(f)
+    return unique
+
+
 # ============================================================================
 # 新版筛选流程
 # ============================================================================
@@ -161,10 +182,10 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
     # Step 1: 获取候选基金
     candidates = []
     if category == "us_qdii":
-        candidates = _fetch_full_universe(http, "qdii", max_pages=5)
+        candidates = _fetch_diverse_universe(http, "qdii")
     elif category == "a_stock":
         for ft in ["gp", "hh", "zs"]:
-            candidates += _fetch_full_universe(http, ft, max_pages=3)
+            candidates += _fetch_diverse_universe(http, ft)
     else:
         candidates = _fetch_rank(http, "all", "1nzf", 1, 50)
 
@@ -312,6 +333,26 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
         f["detail_scores"] = result["scores"]
         f["composite_score"] = result["composite"]
 
+    # Step 5.5: Pool-level cross-sectional normalization of key metrics
+    # Collect raw sub-scores before normalization
+    raw_alpha = []
+    raw_ir = []
+    for f in passed:
+        ds = f.get("detail_scores", {})
+        raw_alpha.append(ds.get("benchmark_adj_return", 50))
+        raw_ir.append(ds.get("benchmark_adj_return", 50))  # same for now
+
+    alpha_norm = _pool_percentile(raw_alpha, higher_better=True)
+
+    for i, f in enumerate(passed):
+        ds = f.get("detail_scores", {})
+        if "benchmark_adj_return" in ds:
+            ds["benchmark_adj_return"] = alpha_norm[i]
+        f["composite_score"] = sum(
+            ds[k] * (ACTIVE_WEIGHTS.get(k, 0) / 100)
+            for k in ds
+        )
+
     # Step 6: 同类内部稳健标准化（composite_score + 各子指标）
     # 被动基金按 benchmark_code 分组，主动基金按地区+类型分组
     for f in passed:
@@ -333,6 +374,12 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
         f["final_score"] = round(adjust_score_with_confidence(
             f["composite_score"], conf["confidence"] / 100
         ), 1)
+
+    # Step 8: 记录去重前的池子大小
+    peer_group_sizes = {}
+    for f in passed:
+        pg = f["peer_group"]
+        peer_group_sizes[pg] = peer_group_sizes.get(pg, 0) + 1
 
     # Step 8: 去重
     passed = deduplicate_share_classes(passed)
@@ -387,7 +434,7 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             composite_score=round(f.get("composite_score", 0), 1),
             confidence=round(f.get("confidence", 0), 1),
             final_score=f.get("final_score", 0),
-            peer_rank=f"{i+1}/{peer_n}",
+            peer_rank=f"{i+1}/{peer_group_sizes.get(f['peer_group'], peer_n)}",
             model_type=f.get("model_type", ""),
             detail_scores=ds,
             strengths=strengths[:3],

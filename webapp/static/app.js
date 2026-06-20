@@ -8,6 +8,22 @@ const ASSET_LABELS = {
 const ASSET_OPTIONS = Object.keys(ASSET_LABELS);
 const ALLOC_COLORS = ['#2563eb','#16a34a','#f59e0b','#db2777','#0891b2','#7c3aed','#64748b','#dc2626'];
 const SIG_CLASS = {hard:'sig-hard', pos:'sig-pos', neg:'sig-neg', neutral:'sig-neutral'};
+const SCORE_LABELS = {
+  'benchmark_adj_return': '基准超额',
+  'downside_control': '回撤控制',
+  'consistency': '稳定性',
+  'cost': '费率',
+  'manager_style': '经理',
+  'operational': '规模质量',
+  'tracking_quality': '跟踪质量',
+  'stability': '运行稳定',
+  'tradability': '交易条件',
+  'tracking_stability': '跟踪稳定',
+  'structure': '产品结构',
+  // Passive index
+  'tracking_error': '跟踪误差',
+  'tracking_diff': '跟踪差异',
+};
 
 // ---------- 工具 ----------
 const $ = (s, r=document) => r.querySelector(s);
@@ -878,30 +894,33 @@ function renderScreener(funds){
   el.innerHTML=funds.map((f,i)=>{
     const score=f.final_score||f.composite_score||0;
     const scoreColor=score>=65?'#16a34a':(score>=45?'#f59e0b':'#6b7280');
+    const confColor = (f.confidence||0) >= 70 ? '#16a34a' : ((f.confidence||0) >= 40 ? '#f59e0b' : '#dc2626');
+    const confTitle = (f.confidence||0) < 70 ? 'title="置信度偏低：费率/规模等数据缺失"' : '';
     const ds=f.detail_scores||{};
     const strengthStr=(f.strengths||[]).slice(0,3).join(' · ');
     const riskStr=(f.risks||[]).slice(0,2).join(' · ');
-    const dqWarnings=[];
-    if(f.annual_fee===null||f.annual_fee===undefined) dqWarnings.push('费率未知');
-    if(f.fund_size===null||f.fund_size===undefined) dqWarnings.push('规模未知');
-    const dqHtml=dqWarnings.length>0?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ 数据质量: ${dqWarnings.join(', ')} (评分置信度降低)</span></div>`:'';
-    const lowQuality = (f.confidence||100) < 50 || dqWarnings.length > 0;
+    const dqItems=[];
+    if(f.annual_fee===null||f.annual_fee===undefined) dqItems.push('费率未知(天天基金不提供)');
+    if(f.fund_size===null||f.fund_size===undefined) dqItems.push('规模未知(天天基金不提供)');
+    const dqHtml=dqItems.length>0?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ 数据质量: ${dqItems.join(', ')} (评分置信度降低)</span></div>`:'';
+    const lowQuality = (f.confidence||100) < 50 || dqItems.length > 0;
     const dqBadge = lowQuality ? '<span class="wl-judgment" style="background:#f59e0b;font-size:10px">⚠️ 数据不完整</span>' : '';
     return `<div class="wl-card">
       <div class="wl-head">
         <span class="scr-rank">#${i+1}</span>
         <span class="wl-name">${esc(f.name)}</span>
         <span class="wl-code">${esc(f.code)} · ${esc(f.fund_type||'')} · ${esc(f.model_type||'')}</span>
-        <span class="wl-judgment" style="background:${scoreColor}">${Math.round(score)}分/${f.confidence||0}%</span>
+        <span class="wl-judgment" style="background:${scoreColor}">质量分 ${Math.round(score)}</span>
+        <span class="wl-judgment" style="background:${confColor};font-size:10px" ${confTitle}>置信度 ${f.confidence||0}%</span>
         ${dqBadge}
       </div>
       <div class="wl-metrics">
         <span>基准: ${esc(f.benchmark_name||'')}</span>
         <span>同类: ${esc(f.peer_rank||'')}</span>
         <span>近1年 ${f.ret_1y!=null?((f.ret_1y*100).toFixed(1)+'%'):'—'}</span>
-        <span>近3年 ${f.ret_3y!=null?((f.ret_3y*100).toFixed(1)+'%'):'—'}</span>
+        <span>${(f.ret_3y && Math.abs(f.ret_3y) > 0.001) ? `近3年 ${(f.ret_3y*100).toFixed(1)}%` : '<span class="muted">成立未满3年</span>'}</span>
         <span>夏普 ${f.sharpe!=null?f.sharpe:'—'}</span>
-        ${Object.entries(ds).slice(0,3).map(([k,v])=>`<span>${k}: ${Math.round(v)}</span>`).join('')}
+        ${Object.entries(ds).slice(0,3).map(([k,v])=>`<span>${SCORE_LABELS[k]||k}: ${Math.round(v)}</span>`).join('')}
       </div>
       ${strengthStr?`<div class="wl-advice">✅ ${esc(strengthStr)}</div>`:''}
       ${riskStr?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ ${esc(riskStr)}</span></div>`:''}
