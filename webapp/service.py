@@ -270,6 +270,7 @@ def analyze_watchlist_full(codes: List[str]) -> dict:
     from fund_analyzer.datasource.eastmoney import EastMoney
     from fund_analyzer.factors import compute_factor_scores, factors_to_dict
     from fund_analyzer.importer import search_fund
+    from fund_analyzer.manager_scorecard import score_manager_style
     from fund_analyzer.models import AssetClass, Holding
     from fund_analyzer.portfolio import compute_metrics
     from fund_analyzer.watchlist import decide_buy, compute_correlation, load_watchlist
@@ -322,6 +323,15 @@ def analyze_watchlist_full(codes: List[str]) -> dict:
         # 相关性
         correlation = compute_correlation(navs, holdings_navs_map) if navs else []
 
+        # 基金经理风格评分
+        fund_style_info = {
+            "name": info.name,
+            "code": code,
+            "asset_class": info.asset_class,
+            "factors": factor_dict,
+        }
+        style_result = score_manager_style(fund_style_info, navs)
+
         results.append({
             "code": code,
             "name": info.name,
@@ -335,6 +345,7 @@ def analyze_watchlist_full(codes: List[str]) -> dict:
             "factors": factor_dict,
             "decision": decision,
             "correlation": correlation,
+            "manager_style": style_result,
         })
         if factor_scores:
             all_factor_data[code] = factor_scores

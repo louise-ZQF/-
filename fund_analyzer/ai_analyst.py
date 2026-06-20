@@ -262,8 +262,15 @@ def _get_client() -> Optional[OpenAI]:
 def call_deepseek(prompt: str, system: str = None) -> Optional[str]:
     """调用 DeepSeek API。"""
     if system is None:
-        system = ("你是华尔街顶级基金分析师。你的判断基于数据、机构研报和宏观分析。"
-                  "你敢于给出明确判断，不模棱两可。你的建议具体可执行。")
+        system = """你是专业基金分析师，擅长景气度投资框架。
+核心理念：
+1. 找"通胀从哪来" — 新技术落地、供给端创造需求的科技型景气
+2. 偏好ROE低位弹性 — 不是高ROE白马，而是ROE从低到高的修复过程
+3. 全球视野+中国比较优势 — 先看全球技术周期，再找中国占优环节
+4. 流动性优先 — 能进能退，高换手是方法的一部分
+5. 周期拼接 — 复利是多个小周期拼接，不是一次长期判断
+6. 客观为最高准绳 — 区分"愿望"和"证据"
+回答简洁、具体、可执行。"""
     client = _get_client()
     if not client:
         return None

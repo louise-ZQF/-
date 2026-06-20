@@ -774,12 +774,16 @@ function renderWatchlistResults(results){
 
     const m=r.metrics||{};
 
+    const ms = r.manager_style;
+    const msBadge = ms ? `<span class="wl-advice-tag" title="${esc(ms.analysis||'')}">🎯 ${esc(ms.style_label||'')}</span>` : '';
+
     return `<div class="wl-card">
       <div class="wl-head">
         <span class="wl-name">${esc(r.name)}</span>
         <span class="wl-code">${esc(r.code)} · ${esc(r.asset_class||'')}</span>
         <span class="wl-judgment" style="background:${buyColor}">${esc(dec.label||'—')}</span>
         ${dec.advice ? `<span class="wl-advice-tag">${esc(dec.advice)}</span>` : ''}
+        ${msBadge}
       </div>
       <div class="wl-metrics">
         <span>净值 ${num(m.last_nav)}</span>
