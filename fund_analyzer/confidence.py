@@ -43,7 +43,8 @@ def compute_confidence(fund: dict, rolling_scores: List[float] = None,
     # 4. 数据质量惩罚
     dq = fund.get("data_quality", {})
     dq_penalty = 0
-    for key in ["fee_missing", "size_missing", "inception_missing", "benchmark_approximate"]:
+    for key in ["fee_missing", "size_missing", "inception_missing", "benchmark_approximate",
+                "fee_estimated"]:
         if dq.get(key):
             dq_penalty += 0.1
     dq_penalty = min(dq_penalty, 0.4)

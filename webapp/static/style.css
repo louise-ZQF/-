@@ -255,3 +255,7 @@ main{max-width:1040px; margin:0 auto; padding:18px}
 .wl-item .wl-code{color:var(--muted); font-size:12px}
 .wl-item .wl-note{color:var(--muted); font-size:11px; margin-left:auto}
 .wl-remove{border:0; background:transparent; color:var(--neg); cursor:pointer; font-size:18px; line-height:1}
+
+/* ---------- 一键转入持仓 ---------- */
+.wl-transfer-btn{color:var(--brand)!important; border-color:var(--brand)!important}
+.wl-transfer-btn:hover{background:#eff6ff!important}
