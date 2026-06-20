@@ -1,6 +1,6 @@
-"""基金元数据缓存：从天天基金 pingzhongdata JS 抓取成立日期，存入本地 JSON。
+"""基金元数据缓存：从天天基金 pingzhongdata JS 抓取成立日期 + fundf10 抓取年费率，存入本地 JSON。
 
-避免反复爬取，加速筛选器。年费率无法从免费 API 可靠获取，统一标记为 None。
+避免反复爬取，加速筛选器。
 """
 from __future__ import annotations
 
@@ -27,6 +27,34 @@ def _save_cache(cache: dict):
     os.makedirs("data", exist_ok=True)
     with open(CACHE_FILE, "w") as f:
         json.dump(cache, f, ensure_ascii=False, indent=2)
+
+
+def _scrape_fees(http, code: str) -> Optional[float]:
+    """从 fundf10 费率页面抓取综合年费率。"""
+    try:
+        url = f"http://fundf10.eastmoney.com/jjfl_{code}.html"
+        text = http.get(url, cache_key=f"fund_fee:{code}",
+                        headers={"Referer": "http://fund.eastmoney.com/"})
+        if not text:
+            return None
+
+        mgmt = cust = sales = 0.0
+        found = False
+
+        m = re.search(r'管理费率[：:<\s/td>]*</td>\s*<td[^>]*>\s*([\d.]+)%', text)
+        if m: mgmt = float(m.group(1)) / 100; found = True
+
+        m = re.search(r'托管费率[：:<\s/td>]*</td>\s*<td[^>]*>\s*([\d.]+)%', text)
+        if m: cust = float(m.group(1)) / 100; found = True
+
+        m = re.search(r'销售服务费[：:<\s/td>]*</td>\s*<td[^>]*>\s*([\d.]+)%', text)
+        if m: sales = float(m.group(1)) / 100; found = True
+
+        if found:
+            return round(mgmt + cust + sales, 4)
+        return None
+    except Exception:
+        return None
 
 
 def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
@@ -62,7 +90,7 @@ def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
     except Exception:
         pass
 
-    info["annual_fee"] = None  # 无法从免费API获取
+    info["annual_fee"] = _scrape_fees(http, code)
     info["_ts"] = date.today().isoformat()
     cache[code] = info
 

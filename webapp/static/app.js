@@ -51,6 +51,7 @@ function init(){
   loadReport().then(()=>{
     loadAlerts();
     runAiAnalysis();
+    loadExposure();
     loadXirr();
     loadReturnCurve();
   });
@@ -591,6 +592,28 @@ async function loadReturnCurve(){
   }catch(e){}
 }
 
+// ---------- 组合暴露分析 ----------
+async function loadExposure(){
+  try{
+    const r=await fetch('/api/portfolio/exposure');
+    const d=await r.json();
+    if(d.error) return;
+    const panel=$('#exposurePanel');
+    if(!panel) return;
+    panel.classList.remove('hidden');
+    const regions=Object.entries(d.by_region||{}).map(([r,p])=>`${r}: ${p}%`).join(' · ');
+    const currencies=Object.entries(d.by_currency||{}).map(([c,p])=>`${c}: ${p}%`).join(' · ');
+    const benchmarks=Object.entries(d.by_benchmark||{}).slice(0,3).map(([bm,info])=>`${bm}: ${info.pct}%`).join(' · ');
+    const warnHtml=(d.warnings||[]).map(w=>`<div>${esc(w)}</div>`).join('');
+    $('#exposureBody').innerHTML=`
+      <div><b>地区:</b> ${esc(regions)}</div>
+      <div><b>币种:</b> ${esc(currencies)}</div>
+      <div><b>指数:</b> ${esc(benchmarks)}</div>
+      ${warnHtml?`<div style="margin-top:4px">${warnHtml}</div>`:''}
+    `;
+  }catch(e){}
+}
+
 // ---------- 自选分析 ----------
 async function loadWatchlist(){
   try{
@@ -737,14 +760,24 @@ $$('.scr-cat').forEach(b=>b.addEventListener('click',()=>{scrCategory=b.dataset.
 $('#scrRunBtn')?.addEventListener('click', runScreener);
 
 async function runScreener(){
-  $('#scrStatus').textContent='筛选中…'; $('#scrResults').innerHTML='<div class="loading">正在从天天基金拉数据+计算量化因子…</div>';
+  $('#scrStatus').textContent='筛选中…';
+  $('#scrResults').innerHTML='<div class="loading">正在从完整基金池拉数据+计算量化因子…</div>';
+  const start=Date.now();
+  const timer=setInterval(()=>{
+    const elapsed=Math.round((Date.now()-start)/1000);
+    $('#scrStatus').textContent=`筛选中… (${elapsed}s)`;
+  }, 2000);
   try{
     const r=await fetch('/api/screener/'+scrCategory);
+    clearInterval(timer);
     const d=await r.json();
     if(d.error){ $('#scrStatus').textContent=d.error; return; }
-    $('#scrStatus').textContent=`筛选完成，共 ${d.count} 只基金`;
+    $('#scrStatus').textContent=`筛选完成，共 ${d.count} 只基金 (耗时 ${Math.round((Date.now()-start)/1000)}s)`;
     renderScreener(d.funds||[]);
-  }catch(e){ $('#scrStatus').textContent='筛选失败: '+e.message; }
+  }catch(e){
+    clearInterval(timer);
+    $('#scrStatus').textContent='筛选失败: '+e.message;
+  }
 }
 
 function renderScreener(funds){
