@@ -23,13 +23,28 @@ def _scrape_fees(http, code: str) -> Optional[float]:
         mgmt = cust = sales = 0.0
         found = False
 
-        m = re.search(r'管理费率[：:<\s/td>]*</td>\s*<td[^>]*>\s*([\d.]+)%', text)
+        # Pattern A: <td>管理费率</td><td>0.60%</td>
+        m = re.search(r'管理费率[^<]*</td>\s*<td[^>]*>\s*([\d.]+)\s*%', text)
+        # Pattern B: 管理费率</span><span>0.60%
+        if not m:
+            m = re.search(r'管理费率[^<]*<[^>]*>\s*([\d.]+)\s*%', text)
+        # Pattern C: loose search
+        if not m:
+            m = re.search(r'管理费[^0-9]*([\d.]+)\s*%', text)
         if m: mgmt = float(m.group(1)) / 100; found = True
 
-        m = re.search(r'托管费率[：:<\s/td>]*</td>\s*<td[^>]*>\s*([\d.]+)%', text)
+        m = re.search(r'托管费率[^<]*</td>\s*<td[^>]*>\s*([\d.]+)\s*%', text)
+        if not m:
+            m = re.search(r'托管费率[^<]*<[^>]*>\s*([\d.]+)\s*%', text)
+        if not m:
+            m = re.search(r'托管费[^0-9]*([\d.]+)\s*%', text)
         if m: cust = float(m.group(1)) / 100; found = True
 
-        m = re.search(r'销售服务费[：:<\s/td>]*</td>\s*<td[^>]*>\s*([\d.]+)%', text)
+        m = re.search(r'销售服务费[^<]*</td>\s*<td[^>]*>\s*([\d.]+)\s*%', text)
+        if not m:
+            m = re.search(r'销售服务费[^<]*<[^>]*>\s*([\d.]+)\s*%', text)
+        if not m:
+            m = re.search(r'销售服务费[^0-9]*([\d.]+)\s*%', text)
         if m: sales = float(m.group(1)) / 100; found = True
 
         if found:

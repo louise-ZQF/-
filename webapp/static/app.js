@@ -804,6 +804,10 @@ function renderScreener(funds){
     const ds=f.detail_scores||{};
     const strengthStr=(f.strengths||[]).slice(0,2).join(' · ');
     const riskStr=(f.risks||[]).slice(0,2).join(' · ');
+    const dqWarnings=[];
+    if(f.annual_fee===null||f.annual_fee===undefined) dqWarnings.push('费率未知');
+    if(f.fund_size===null||f.fund_size===undefined) dqWarnings.push('规模未知');
+    const dqHtml=dqWarnings.length>0?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ 数据质量: ${dqWarnings.join(', ')} (评分置信度降低)</span></div>`:'';
     return `<div class="wl-card">
       <div class="wl-head">
         <span class="scr-rank">#${i+1}</span>
@@ -818,6 +822,7 @@ function renderScreener(funds){
       </div>
       ${strengthStr?`<div class="wl-advice">✅ ${esc(strengthStr)}</div>`:''}
       ${riskStr?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ ${esc(riskStr)}</span></div>`:''}
+      ${dqHtml}
     </div>`;
   }).join('');
 }
