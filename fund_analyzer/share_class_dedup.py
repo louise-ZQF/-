@@ -22,8 +22,8 @@ def find_share_class_pairs(funds: List[dict]) -> List[tuple]:
 
 def resolve_share_class(fund_a: dict, fund_c: dict, hold_years: float = 3) -> dict:
     """在 A/C 类中选一个。预期持有3年以上选A类（无销售服务费），否则选C类。"""
-    fee_a = fund_a.get("annual_fee", 0.01)
-    fee_c = fund_c.get("annual_fee", 0.01) + 0.004  # C类通常多0.4%销售服务费
+    fee_a = fund_a.get("annual_fee") or 0.01
+    fee_c = (fund_c.get("annual_fee") or 0.01) + 0.004  # C类通常多0.4%销售服务费
 
     if hold_years >= 3:
         # A类长期更省
