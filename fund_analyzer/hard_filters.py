@@ -15,7 +15,7 @@ _MIN_MANAGER_TENURE = 1      # 基金经理最少任职 1 年
 
 def compute_peer_size_threshold(funds: List[dict], percentile: float = _MIN_SIZE_WARN_PCT) -> float:
     """计算同类基金规模的百分位阈值。"""
-    sizes = [f.get("fund_size", 0) for f in funds if f.get("fund_size", 0) > 0]
+    sizes = [f.get("fund_size") for f in funds if f.get("fund_size") is not None and f.get("fund_size", 0) > 0]
     if len(sizes) < 5:
         return _MIN_SIZE_STRICT
     sizes.sort()
@@ -61,9 +61,9 @@ def apply_hard_filters(funds: List[dict],
         if expected_days > 0 and nav_days / expected_days < 0.7:
             reasons.append(f"净值缺失{nav_days}/{expected_days}天")
 
-        # 3. 规模过小（严格过滤）
-        size = f.get("fund_size", 0)
-        if size < _MIN_SIZE_STRICT:
+        # 3. 规模过小（严格过滤，仅在数据可用时）
+        size = f.get("fund_size")
+        if size is not None and size < _MIN_SIZE_STRICT:
             reasons.append(f"规模过小({size/1e4:.0f}万)")
 
         # 4. 基金经理任职不足
@@ -87,8 +87,8 @@ def apply_hard_filters(funds: List[dict],
         else:
             passed.append(f)
 
-        # 规模警告（不过滤，但标记）
-        if size > 0 and size < peer_threshold and size >= _MIN_SIZE_STRICT:
+        # 规模警告（不过滤，标记；数据缺失时跳过）
+        if size is not None and size > 0 and size < peer_threshold and size >= _MIN_SIZE_STRICT:
             f["size_warning"] = True
 
     return passed, filtered
