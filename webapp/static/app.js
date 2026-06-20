@@ -898,7 +898,10 @@ function renderScreener(funds){
       <div class="wl-metrics">
         <span>基准: ${esc(f.benchmark_name||'')}</span>
         <span>同类: ${esc(f.peer_rank||'')}</span>
-        ${Object.entries(ds).slice(0,5).map(([k,v])=>`<span>${k}: ${Math.round(v)}</span>`).join('')}
+        <span>近1年 ${f.ret_1y!=null?((f.ret_1y*100).toFixed(1)+'%'):'—'}</span>
+        <span>近3年 ${f.ret_3y!=null?((f.ret_3y*100).toFixed(1)+'%'):'—'}</span>
+        <span>夏普 ${f.sharpe!=null?f.sharpe:'—'}</span>
+        ${Object.entries(ds).slice(0,3).map(([k,v])=>`<span>${k}: ${Math.round(v)}</span>`).join('')}
       </div>
       ${strengthStr?`<div class="wl-advice">✅ ${esc(strengthStr)}</div>`:''}
       ${riskStr?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ ${esc(riskStr)}</span></div>`:''}

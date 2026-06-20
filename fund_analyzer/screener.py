@@ -52,6 +52,9 @@ class ScreenedFund:
     strengths: List[str] = field(default_factory=list)
     risks: List[str] = field(default_factory=list)
     dedup_note: str = ""
+    ret_1y: float = 0.0
+    ret_3y: float = 0.0
+    sharpe: float = 0.0
 
 
 @dataclass
@@ -175,14 +178,45 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
 
     # Step 2: 分类 + 获取数据（限制50只，控制耗时）
     classified_funds = []
-    for c in unique[:50]:
+    for c in unique[:30]:
         fc = classify_fund(c["code"], c["name"])
 
-        # 拉净值
-        navpoints = em.history(c["code"], size=300)
+        # 拉净值（优先 SQLite 缓存）
+        from .db import get_nav_history
+        navpoints = []
+        cached_navs = get_nav_history(c["code"], limit=300)
+        if len(cached_navs) >= 40:
+            from datetime import date as dt
+            from fund_analyzer.models import NavPoint
+            for n in cached_navs:
+                try:
+                    d = dt.fromisoformat(n["date"])
+                    navpoints.append(NavPoint(d=d, nav=n["nav"], cum_nav=n.get("cum_nav"), change=n.get("change_pct")))
+                except Exception:
+                    pass
+
+        if len(navpoints) < 40:
+            navpoints = em.history(c["code"], size=300)
+            if navpoints:
+                from .db import insert_nav_batch
+                batch = [{"date": p.d.isoformat(), "nav": p.nav, "cum_nav": p.cum_nav, "change_pct": p.change} for p in navpoints]
+                try:
+                    insert_nav_batch(c["code"], batch)
+                except Exception:
+                    pass
+
         if len(navpoints) < 40:
             continue
         navs = [p.nav for p in navpoints if p.nav]
+
+        # Compute sharpe
+        _sharpe_val = 0.0
+        if len(navs) >= 60:
+            rets = [navs[i]/navs[i-1]-1 for i in range(1, len(navs)) if navs[i-1]]
+            if rets:
+                ann_ret = sum(rets)/len(rets)*252
+                ann_vol = statistics.stdev(rets)*math.sqrt(252) if len(rets) > 1 else 0
+                _sharpe_val = round((ann_ret-0.02)/max(ann_vol,0.001), 2) if ann_vol > 0 else 0
 
         # 拉元数据（缓存24h，pingzhongdata JS） + fundf10 补充
         meta = get_metadata(http, c["code"])
@@ -236,6 +270,7 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             "aligned": aligned,
             "tracking": tracking,
             "factors": fs,
+            "_sharpe": _sharpe_val,
             "ret_1y": c.get("ret_1y", 0),
             "ret_3y": c.get("ret_3y", 0),
             "annual_fee": meta.get("annual_fee"),
@@ -357,6 +392,9 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             strengths=strengths[:3],
             risks=risks[:3],
             dedup_note=f.get("dedup_note", ""),
+            ret_1y=f.get("ret_1y", 0),
+            ret_3y=f.get("ret_3y", 0),
+            sharpe=f.get("_sharpe", 0),
         ))
 
     return results
