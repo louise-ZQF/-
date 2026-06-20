@@ -127,3 +127,55 @@ def get_all_codes() -> List[str]:
     with _conn() as db:
         rows = db.execute("SELECT DISTINCT code FROM nav_history").fetchall()
         return [r[0] for r in rows]
+
+
+def sync_nav_for_codes(http, codes: List[str], progress_callback=None):
+    """为指定代码同步净值到 SQLite。
+
+    http: HttpClient 实例
+    codes: 基金代码列表
+    progress_callback: 可选，每同步一只回调 (code, index, total)
+    """
+    from .datasource.eastmoney import EastMoney
+    em = EastMoney(http)
+
+    total = len(codes)
+    synced = 0
+    for i, code in enumerate(codes):
+        try:
+            # Check if we already have enough data
+            existing = get_nav_count(code)
+            if existing >= 200:
+                continue  # Already synced
+
+            navpoints = em.history(code, size=300)
+            if navpoints:
+                batch = [
+                    {
+                        "date": p.d.isoformat(),
+                        "nav": p.nav,
+                        "cum_nav": p.cum_nav,
+                        "change_pct": p.change,
+                    }
+                    for p in navpoints
+                ]
+                insert_nav_batch(code, batch)
+                synced += 1
+        except Exception as e:
+            print(f"[sync] {code} failed: {e}")
+
+        if progress_callback:
+            progress_callback(code, i + 1, total)
+
+    return synced
+
+
+def get_sync_status(codes: List[str]) -> dict:
+    """获取同步状态。"""
+    total = len(codes)
+    complete = sum(1 for c in codes if get_nav_count(c) >= 200)
+    return {
+        "total": total,
+        "complete": complete,
+        "pct": round(complete / max(total, 1) * 100, 1),
+    }

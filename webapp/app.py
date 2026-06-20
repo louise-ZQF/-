@@ -40,6 +40,31 @@ def _auth_ok() -> bool:
 
 def create_app() -> Flask:
     init_db()
+
+    # Auto-sync NAV cache for existing holdings on startup (background)
+    def _auto_sync():
+        try:
+            from fund_analyzer.config import load_settings
+            from fund_analyzer.datasource.base import HttpClient
+            from fund_analyzer.db import sync_nav_for_codes
+
+            holdings = service.read_holdings_raw()
+            codes = [str(h.get("code", "")) for h in holdings if len(str(h.get("code", ""))) == 6]
+            if codes:
+                settings = load_settings("config/settings.yaml")
+                http = HttpClient(
+                    cache_dir=settings.datasource.cache_dir,
+                    ttl_minutes=0,
+                    timeout=settings.datasource.request_timeout,
+                )
+                synced = sync_nav_for_codes(http, codes)
+                print(f"[auto-sync] {synced}/{len(codes)} funds synced")
+        except Exception as e:
+            print(f"[auto-sync] failed: {e}")
+
+    import threading
+    threading.Thread(target=_auto_sync, daemon=True).start()
+
     app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 
     @app.before_request
@@ -353,6 +378,68 @@ def create_app() -> Flask:
             "background_color": "#f4f6f9",
             "theme_color": "#2563eb",
             "icons": [{"src": "/static/icon.svg", "sizes": "192x192", "type": "image/svg+xml"}],
+        })
+
+    # ---- Cache sync ----
+
+    @app.post("/api/cache/sync")
+    def cache_sync():
+        """同步持仓+自选基金的净值到 SQLite。"""
+        try:
+            from fund_analyzer.config import load_settings
+            from fund_analyzer.datasource.base import HttpClient
+            from fund_analyzer.db import sync_nav_for_codes, get_sync_status
+
+            # Collect all codes from holdings + watchlist
+            codes = set()
+            for h in service.read_holdings_raw():
+                codes.add(str(h.get("code", "")))
+
+            # Also add watchlist codes
+            try:
+                wl = service.get_watchlist()
+                for w in wl:
+                    codes.add(str(w.get("code", "")))
+            except Exception:
+                pass
+
+            codes = [c for c in codes if len(c) == 6]
+            if not codes:
+                return jsonify({"error": "没有需要同步的基金"}), 400
+
+            import threading
+
+            def run_sync():
+                settings = load_settings("config/settings.yaml")
+                http = HttpClient(
+                    cache_dir=settings.datasource.cache_dir,
+                    ttl_minutes=0,
+                    timeout=settings.datasource.request_timeout,
+                )
+                sync_nav_for_codes(http, codes)
+
+            # Run in background
+            threading.Thread(target=run_sync, daemon=True).start()
+
+            return jsonify({
+                "ok": True,
+                "message": f"开始同步 {len(codes)} 只基金",
+                "codes": len(codes),
+                "status": get_sync_status(codes),
+            })
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.get("/api/cache/status")
+    def cache_status():
+        """获取 SQLite 缓存状态。"""
+        from fund_analyzer.db import get_all_codes, get_nav_count
+        codes = get_all_codes()
+        total_navs = sum(get_nav_count(c) for c in codes)
+        return jsonify({
+            "funds_cached": len(codes),
+            "total_nav_points": total_navs,
         })
 
     return app
