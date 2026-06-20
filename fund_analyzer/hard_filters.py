@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 _MIN_SIZE_WARN_PCT = 0.20   # 同类 20% 分位
 _MIN_SIZE_STRICT = 50000000  # 5000万（严格过滤）
 _MIN_HISTORY_PASSIVE = 0.5   # 被动基金最少 0.5 年（~126 交易日）
-_MIN_HISTORY_ACTIVE = 1      # 主动基金最少 1 年（~252 交易日，受限于 API 分页）
+_MIN_HISTORY_ACTIVE = 0.5    # 主动基金最少 0.5 年（~126 交易日）
 _MIN_MANAGER_TENURE = 1      # 基金经理最少任职 1 年
 
 
@@ -58,7 +58,7 @@ def apply_hard_filters(funds: List[dict],
         # 2. 净值缺失严重
         nav_days = f.get("nav_days", 0)
         expected_days = f.get("expected_days", 252)
-        if expected_days > 0 and nav_days / expected_days < 0.7:
+        if expected_days > 0 and nav_days / expected_days < 0.4:
             reasons.append(f"净值缺失{nav_days}/{expected_days}天")
 
         # 3. 规模过小（严格过滤，仅在数据可用时）
