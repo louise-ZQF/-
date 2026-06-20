@@ -27,6 +27,13 @@ _STOOQ_MAP: Dict[str, str] = {
     "CNY=X": "usdcny",
 }
 
+# 内部代码 → Yahoo 可用 ticker（沪深300等国内指数）
+_YAHOO_TICKER_MAP: Dict[str, str] = {
+    "000300": "000300.SS",
+    "000905": "000905.SS",
+    "000016": "000016.SS",
+}
+
 # 市场情绪指标
 _MARKET_INDICATORS = {
     "vix": {"ticker": "^VIX", "label": "VIX 恐慌指数", "low": 15, "high": 25, "desc": "<15=平静 15-20=正常 20-25=紧张 25-30=恐慌 >30=极度恐慌"},
@@ -55,9 +62,10 @@ class MarketIndex:
 
     # ---- 主源：Yahoo ----
     def _yahoo(self, ticker: str, rng: str = "2y") -> List[Tuple[date, float]]:
-        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        yahoo_ticker = _YAHOO_TICKER_MAP.get(ticker, ticker)
+        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_ticker}"
                f"?range={rng}&interval=1d")
-        text = self.http.get(url, cache_key=f"yahoo:{ticker}:{rng}")
+        text = self.http.get(url, cache_key=f"yahoo:{yahoo_ticker}:{rng}")
         if not text:
             return []
         try:
