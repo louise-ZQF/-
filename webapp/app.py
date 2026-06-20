@@ -158,6 +158,33 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    @app.get("/api/portfolio/exposure")
+    def portfolio_exposure():
+        try:
+            holdings = service.read_holdings_raw()
+            if not holdings:
+                return jsonify({"error": "请先保存持仓"}), 400
+            from fund_analyzer.portfolio_exposure import analyze_exposure
+            from fund_analyzer.fund_classifier import classify_fund
+
+            # Enrich holdings with benchmark info
+            enriched = []
+            for h in holdings:
+                fc = classify_fund(str(h.get("code", "")), h.get("name", ""))
+                enriched.append({
+                    "code": h.get("code"),
+                    "name": h.get("name"),
+                    "benchmark_code": fc.benchmark_code,
+                    "asset_region": fc.asset_region,
+                    "currency": h.get("currency") or ("USD" if fc.asset_region in ("us", "global") else "CNY" if fc.asset_region == "cn" else "HKD"),
+                    "current_value": h.get("current_value", 0),
+                })
+
+            result = analyze_exposure(enriched)
+            return jsonify({"ok": True, **result})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     # ---- 自选基金 ----
 
     @app.get("/api/watchlist")
