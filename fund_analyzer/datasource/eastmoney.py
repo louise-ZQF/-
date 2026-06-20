@@ -146,6 +146,42 @@ class EastMoney:
 
         return info
 
+    # ---- 全市场基金列表 ----
+    def all_funds(self) -> List[dict]:
+        """获取全市场基金列表（从 fundcode_search.js）。"""
+        url = "http://fund.eastmoney.com/js/fundcode_search.js"
+        text = self.http.get(url, cache_key="fundcode_search",
+                             headers={"Referer": "http://fund.eastmoney.com/"})
+        if not text:
+            return []
+        # Format: ["000001","HXCZ","华夏成长","混合型","HUAXIACHENGZHANG"]
+        items = re.findall(r'\["(\d{6})","([^"]*)","([^"]*)","([^"]*)"', text)
+        return [
+            {"code": c, "abbr": a, "name": n, "type": t}
+            for c, a, n, t in items
+        ]
+
+    # ---- 风险指标 ----
+    def risk_metrics(self, code: str) -> dict:
+        """获取风险指标（标准差、夏普比率）。"""
+        url = f"http://fundf10.eastmoney.com/tsdata_{code}.html"
+        text = self.http.get(url, cache_key=f"risk:{code}",
+                             headers={"Referer": "http://fund.eastmoney.com/"})
+        if not text:
+            return {}
+        metrics = {}
+        # 近1年标准差和夏普
+        m = re.search(r'近1年.*?标准差.*?([\d.]+).*?夏普.*?([\d.]+)', text, re.DOTALL)
+        if m:
+            metrics["std_1y"] = float(m.group(1))
+            metrics["sharpe_1y"] = float(m.group(2))
+        # 近3年
+        m = re.search(r'近3年.*?标准差.*?([\d.]+).*?夏普.*?([\d.]+)', text, re.DOTALL)
+        if m:
+            metrics["std_3y"] = float(m.group(1))
+            metrics["sharpe_3y"] = float(m.group(2))
+        return metrics
+
     # ---- 历史净值 ----
     _PAGE_SIZE = 20  # API 单页最大条数
 

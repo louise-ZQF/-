@@ -197,6 +197,14 @@ def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
                                 if v is not None and v > 0:
                                     info["fund_size"] = float(v) * 1e8
                                     break
+                    # Try to extract inception_date from Data_fluctuationScale categories
+                    if "inception_date" not in info:
+                        categories = scale_data.get("categories", [])
+                        if categories:
+                            for cat in categories:
+                                if re.match(r'\d{4}-\d{2}-\d{2}', str(cat)):
+                                    info["inception_date"] = str(cat)
+                                    break
                 except Exception:
                     pass
 
