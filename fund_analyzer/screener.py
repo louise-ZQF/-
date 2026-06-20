@@ -27,6 +27,7 @@ from .share_class_dedup import deduplicate_share_classes, deduplicate_same_index
 from .overlap_filter import remove_high_correlation
 from .confidence import compute_confidence, adjust_score_with_confidence
 from .factors import compute_factor_scores, FactorScores
+from .metadata_cache import get_metadata
 
 
 # ============================================================================
@@ -178,13 +179,20 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
         fc = classify_fund(c["code"], c["name"])
 
         # 拉净值
-        navpoints = em.history(c["code"], size=300)  # ~300 交易日 ≈ 1.2年
+        navpoints = em.history(c["code"], size=300)
         if len(navpoints) < 40:
             continue
         navs = [p.nav for p in navpoints if p.nav]
 
-        # 获取基金元数据（规模、费率、成立日期、申购状态）
-        meta = em.fund_info(c["code"])
+        # 拉元数据（缓存24h，pingzhongdata JS） + fundf10 补充
+        meta = get_metadata(http, c["code"])
+        # 补充 fundf10 规模数据
+        try:
+            f10 = em.fund_info(c["code"]) or {}
+            if f10.get("fund_size"):
+                meta["fund_size"] = f10["fund_size"]
+        except Exception:
+            pass
 
         # 拉基准收益
         bm_info = get_benchmark_info(fc.benchmark_code)
