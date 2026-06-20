@@ -57,6 +57,7 @@ function init(){
   });
   // PWA
   if('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
+  startAutoRefresh();
 }
 
 function setTab(tab){
@@ -81,6 +82,25 @@ async function loadReport(){
     showBanner('网络错误：'+e.message, true);
     $('#fundList').innerHTML='';
   }
+}
+
+// ---------- 自动刷新 ----------
+let _autoRefreshTimer = null;
+
+function startAutoRefresh(){
+  if(_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+  _autoRefreshTimer = setInterval(async ()=>{
+    try{
+      const r = await fetch('/api/report?mode=live');
+      const data = await r.json();
+      if(!data.error){
+        state.data = data;
+        renderDashboard(data);
+      }
+    }catch(e){
+      // Silent refresh failure — don't bother the user
+    }
+  }, 5 * 60 * 1000); // 5 minutes
 }
 
 function showBanner(msg, warn=false){
@@ -594,24 +614,28 @@ async function loadReturnCurve(){
 
 // ---------- 组合暴露分析 ----------
 async function loadExposure(){
+  const panel=$('#exposurePanel');
+  const body=$('#exposureBody');
+  if(body) body.innerHTML='<div class="loading">加载中…</div>';
   try{
     const r=await fetch('/api/portfolio/exposure');
     const d=await r.json();
-    if(d.error) return;
-    const panel=$('#exposurePanel');
-    if(!panel) return;
-    panel.classList.remove('hidden');
-    const regions=Object.entries(d.by_region||{}).map(([r,p])=>`${r}: ${p}%`).join(' · ');
-    const currencies=Object.entries(d.by_currency||{}).map(([c,p])=>`${c}: ${p}%`).join(' · ');
-    const benchmarks=Object.entries(d.by_benchmark||{}).slice(0,3).map(([bm,info])=>`${bm}: ${info.pct}%`).join(' · ');
-    const warnHtml=(d.warnings||[]).map(w=>`<div style="color:#b26a00;font-size:12px">⚠️ ${esc(w)}</div>`).join('');
-    $('#exposureBody').innerHTML=`
-      <div><b>地区:</b> ${esc(regions)}</div>
-      <div><b>币种:</b> ${esc(currencies)}</div>
-      <div><b>指数:</b> ${esc(benchmarks)}</div>
-      ${warnHtml?`<div style="margin-top:4px">${warnHtml}</div>`:''}
-    `;
-  }catch(e){}
+    if(panel && !d.error && d.total_value){
+      panel.classList.remove('hidden');
+      const regions=Object.entries(d.by_region||{}).map(([r,p])=>`${r}: ${p}%`).join(' · ');
+      const currencies=Object.entries(d.by_currency||{}).map(([c,p])=>`${c}: ${p}%`).join(' · ');
+      const benchmarks=Object.entries(d.by_benchmark||{}).slice(0,3).map(([bm,info])=>`${bm}: ${info.pct}%`).join(' · ');
+      const warnHtml=(d.warnings||[]).map(w=>`<div style="color:#b26a00;font-size:12px">⚠️ ${esc(w)}</div>`).join('');
+      if(body) body.innerHTML=`
+        <div><b>地区:</b> ${esc(regions)}</div>
+        <div><b>币种:</b> ${esc(currencies)}</div>
+        <div><b>指数:</b> ${esc(benchmarks)}</div>
+        ${warnHtml?`<div style="margin-top:4px">${warnHtml}</div>`:''}
+      `;
+    }else if(body && d.error){
+      body.innerHTML='<div class="empty">加载失败</div>';
+    }
+  }catch(e){if(body) body.innerHTML='<div class="empty">加载失败</div>';}
 }
 
 // ---------- 自选分析 ----------
