@@ -410,10 +410,16 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
         ds = f.get("detail_scores", {})
 
         # 识别优势
+        _CN = {"benchmark_adj_return":"基准超额","downside_control":"回撤控制",
+               "consistency":"稳定性","cost":"费率","manager_style":"经理",
+               "operational":"规模质量","tracking_quality":"跟踪质量",
+               "tracking_error":"跟踪误差","tracking_diff":"跟踪差异",
+               "tracking_stability":"跟踪稳定","tradability":"交易条件",
+               "structure":"产品结构","stability":"运行稳定"}
         strengths = []
         for k, v in sorted(ds.items(), key=lambda x: -x[1]):
             if v >= 80:
-                strengths.append(f"{k}: {v:.0f}/100")
+                strengths.append(f"{_CN.get(k, k)}: {v:.0f}/100")
 
         # 识别风险
         risks = []

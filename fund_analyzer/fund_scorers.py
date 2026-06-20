@@ -164,12 +164,11 @@ def _pool_percentile(values: List[float], higher_better: bool = True) -> List[fl
 # ============================================================================
 
 ACTIVE_WEIGHTS = {
-    "benchmark_adj_return": 30,  # 超额收益 + 信息比率 + Alpha显著性
-    "downside_control": 20,      # 最大回撤 + 下行捕获率 + Sortino + 恢复时间
+    "benchmark_adj_return": 40,  # 超额收益 + 信息比率 + Alpha
+    "downside_control": 30,      # 最大回撤 + 下行捕获率 + Sortino
     "consistency": 20,           # 滚动排名稳定性 + 正超额月份比例
     "manager_style": 10,         # 任职时间 + 风格漂移
-    "cost": 10,                  # 费率
-    "operational": 10,           # 规模 + 数据质量
+    # cost/operational 数据不可用，权重已重分配
 }
 
 
@@ -255,28 +254,7 @@ def score_active_equity(fund: dict, tracking_metrics: dict,
     else:
         scores["manager_style"] = 50
 
-    # ---- 5. 成本 (10分) ----
-    fee = fund.get("annual_fee")
-    if fee is None:
-        scores["cost"] = 50  # neutral, data missing
-        fund.setdefault("data_quality", {})["fee_missing"] = True
-    else:
-        scores["cost"] = round(max(0, min(100, (0.03 - fee) / 0.028 * 100)), 1)
-
-    # ---- 6. 运行质量 (10分) — 基于真实规模 ----
-    size = fund.get("fund_size")
-    if size is not None:
-        if size < 5e7:
-            op_score = 20
-        elif size < 2e8:
-            op_score = 50
-        elif size < 1e9:
-            op_score = 80
-        else:
-            op_score = 70
-    else:
-        op_score = 50
-    scores["operational"] = op_score
+    # cost/operational 数据不可用，不参与评分（权重已重分配）
 
     # ---- 加权综合 ----
     composite = sum(

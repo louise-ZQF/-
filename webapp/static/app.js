@@ -899,12 +899,6 @@ function renderScreener(funds){
     const ds=f.detail_scores||{};
     const strengthStr=(f.strengths||[]).slice(0,3).join(' · ');
     const riskStr=(f.risks||[]).slice(0,2).join(' · ');
-    const dqItems=[];
-    if(f.annual_fee===null||f.annual_fee===undefined) dqItems.push('费率未知(天天基金不提供)');
-    if(f.fund_size===null||f.fund_size===undefined) dqItems.push('规模未知(天天基金不提供)');
-    const dqHtml=dqItems.length>0?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ 数据质量: ${dqItems.join(', ')} (评分置信度降低)</span></div>`:'';
-    const lowQuality = (f.confidence||100) < 50 || dqItems.length > 0;
-    const dqBadge = lowQuality ? '<span class="wl-judgment" style="background:#f59e0b;font-size:10px">⚠️ 数据不完整</span>' : '';
     return `<div class="wl-card">
       <div class="wl-head">
         <span class="scr-rank">#${i+1}</span>
@@ -912,7 +906,6 @@ function renderScreener(funds){
         <span class="wl-code">${esc(f.code)} · ${esc(f.fund_type||'')} · ${esc(f.model_type||'')}</span>
         <span class="wl-judgment" style="background:${scoreColor}">质量分 ${Math.round(score)}</span>
         <span class="wl-judgment" style="background:${confColor};font-size:10px" ${confTitle}>置信度 ${f.confidence||0}%</span>
-        ${dqBadge}
       </div>
       <div class="wl-metrics">
         <span>基准: ${esc(f.benchmark_name||'')}</span>
@@ -924,7 +917,6 @@ function renderScreener(funds){
       </div>
       ${strengthStr?`<div class="wl-advice">✅ ${esc(strengthStr)}</div>`:''}
       ${riskStr?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ ${esc(riskStr)}</span></div>`:''}
-      ${dqHtml}
     </div>`;
   }).join('');
 }
