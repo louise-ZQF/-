@@ -123,3 +123,9 @@ def is_passive_index(name: str) -> bool:
 def is_active_fund(name: str) -> bool:
     """快速判断是否为主动基金。"""
     return not is_passive_index(name)
+
+
+def peer_group_key(fc: FundClass) -> str:
+    """生成同类分组键。"""
+    kind = "passive" if fc.fund_type == "passive_index" else "active"
+    return f"{fc.asset_region}_{fc.benchmark_code}_{kind}"
