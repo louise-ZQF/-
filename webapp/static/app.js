@@ -90,7 +90,7 @@ function showBanner(msg, warn=false){
 
 // ---------- 渲染仪表盘 ----------
 function renderDashboard(d){
-  $('#asOf').textContent = (d.title?d.title+' · ':'') + (d.as_of||'');
+  $('#asOf').textContent = '最后更新: ' + ((d.title?d.title+' · ':'') + (d.as_of||''));
 
   if(d.empty){
     showBanner('还没有持仓数据。去「持仓管理」导入你的基金吧 👉', true);
@@ -604,7 +604,7 @@ async function loadExposure(){
     const regions=Object.entries(d.by_region||{}).map(([r,p])=>`${r}: ${p}%`).join(' · ');
     const currencies=Object.entries(d.by_currency||{}).map(([c,p])=>`${c}: ${p}%`).join(' · ');
     const benchmarks=Object.entries(d.by_benchmark||{}).slice(0,3).map(([bm,info])=>`${bm}: ${info.pct}%`).join(' · ');
-    const warnHtml=(d.warnings||[]).map(w=>`<div>${esc(w)}</div>`).join('');
+    const warnHtml=(d.warnings||[]).map(w=>`<div style="color:#b26a00;font-size:12px">⚠️ ${esc(w)}</div>`).join('');
     $('#exposureBody').innerHTML=`
       <div><b>地区:</b> ${esc(regions)}</div>
       <div><b>币种:</b> ${esc(currencies)}</div>
@@ -802,18 +802,21 @@ function renderScreener(funds){
     const score=f.final_score||f.composite_score||0;
     const scoreColor=score>=65?'#16a34a':(score>=45?'#f59e0b':'#6b7280');
     const ds=f.detail_scores||{};
-    const strengthStr=(f.strengths||[]).slice(0,2).join(' · ');
+    const strengthStr=(f.strengths||[]).slice(0,3).join(' · ');
     const riskStr=(f.risks||[]).slice(0,2).join(' · ');
     const dqWarnings=[];
     if(f.annual_fee===null||f.annual_fee===undefined) dqWarnings.push('费率未知');
     if(f.fund_size===null||f.fund_size===undefined) dqWarnings.push('规模未知');
     const dqHtml=dqWarnings.length>0?`<div class="wl-risk-opp"><span class="wl-risk">⚠️ 数据质量: ${dqWarnings.join(', ')} (评分置信度降低)</span></div>`:'';
+    const lowQuality = (f.confidence||100) < 50 || dqWarnings.length > 0;
+    const dqBadge = lowQuality ? '<span class="wl-judgment" style="background:#f59e0b;font-size:10px">⚠️ 数据不完整</span>' : '';
     return `<div class="wl-card">
       <div class="wl-head">
         <span class="scr-rank">#${i+1}</span>
         <span class="wl-name">${esc(f.name)}</span>
         <span class="wl-code">${esc(f.code)} · ${esc(f.fund_type||'')} · ${esc(f.model_type||'')}</span>
         <span class="wl-judgment" style="background:${scoreColor}">${Math.round(score)}分/${f.confidence||0}%</span>
+        ${dqBadge}
       </div>
       <div class="wl-metrics">
         <span>基准: ${esc(f.benchmark_name||'')}</span>
