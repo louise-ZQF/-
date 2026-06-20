@@ -249,6 +249,7 @@ def screen_funds_v2(http: HttpClient, em: EastMoney, mi: MarketIndex,
             "peer_group": f"{fc.asset_region}_{fc.fund_type}",
             "data_quality": {
                 "fee_missing": meta.get("annual_fee") is None,
+                "fee_estimated": meta.get("annual_fee_estimated", False),
                 "size_missing": meta.get("fund_size") is None,
                 "inception_missing": meta.get("inception_date") is None,
             },

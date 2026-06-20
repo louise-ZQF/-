@@ -10,10 +10,43 @@ from typing import Optional
 
 from .db import get_meta, upsert_meta
 
+# Conservative fee estimates by fund type, used when scraping fails
+_TYPE_FEE_ESTIMATES = {
+    "us_equity_passive": 0.0075,  # US index QDII: ~0.6% mgmt + 0.15% custody
+    "us_equity_active": 0.015,    # Active QDII: ~1.2% mgmt + 0.3% other
+    "cn_equity_passive": 0.005,   # A-share index: ~0.5%
+    "cn_equity_active": 0.015,    # A-share active: ~1.5%
+    "hk_equity": 0.008,
+    "bond": 0.003,
+}
 
-def _scrape_fees(http, code: str) -> Optional[float]:
-    """从多个数据源抓取综合年费率。"""
-    # Source 1: F10DataApi (returns HTML table)
+
+def _estimate_by_type(fc) -> Optional[float]:
+    """按基金类型返回保守费率估计。"""
+    if not fc:
+        return None
+    if fc.fund_type == "bond":
+        return _TYPE_FEE_ESTIMATES["bond"]
+    fe_map = {
+        ("us", "passive_index"): "us_equity_passive",
+        ("us", "active_equity"): "us_equity_active",
+        ("cn", "passive_index"): "cn_equity_passive",
+        ("cn", "active_equity"): "cn_equity_active",
+        ("hk", "passive_index"): "hk_equity",
+        ("hk", "active_equity"): "hk_equity",
+    }
+    key = fe_map.get((fc.asset_region, fc.fund_type))
+    if key:
+        return _TYPE_FEE_ESTIMATES[key]
+    # Fallback for unhandled combos (global, active_hybrid, other)
+    if fc.fund_type in ("passive_index",):
+        return _TYPE_FEE_ESTIMATES["cn_equity_passive"]
+    return _TYPE_FEE_ESTIMATES["cn_equity_active"]
+
+
+def _scrape_fees(http, code: str, name: str = ""):
+    """从多个数据源抓取综合年费率。返回 (fee, estimated) 元组。"""
+    # Source 1: F10DataApi (returns HTML table or XML)
     try:
         url = f"http://fundf10.eastmoney.com/F10DataApi.aspx?type=jjfl&code={code}"
         text = http.get(url, cache_key=f"fund_fee_api:{code}",
@@ -21,6 +54,7 @@ def _scrape_fees(http, code: str) -> Optional[float]:
         if text:
             mgmt = cust = sales = 0.0
             found = False
+            # Primary: HTML table pattern (管理费</td><td>1.50%</td>)
             for pattern, var in [
                 (r'管理费[^<]*</td><td[^>]*>\s*([\d.]+)\s*%', 'mgmt'),
                 (r'托管费[^<]*</td><td[^>]*>\s*([\d.]+)\s*%', 'cust'),
@@ -31,8 +65,20 @@ def _scrape_fees(http, code: str) -> Optional[float]:
                     if var == 'mgmt': mgmt = float(m.group(1)) / 100; found = True
                     elif var == 'cust': cust = float(m.group(1)) / 100; found = True
                     elif var == 'sales': sales = float(m.group(1)) / 100; found = True
+            # Fallback: simpler label-value patterns (管理费:1.50%)
+            if not found:
+                for pattern, var in [
+                    (r'管理费[：:]\s*([\d.]+)\s*%', 'mgmt'),
+                    (r'托管费[：:]\s*([\d.]+)\s*%', 'cust'),
+                    (r'销售服务费[：:]\s*([\d.]+)\s*%', 'sales'),
+                ]:
+                    m = re.search(pattern, text)
+                    if m:
+                        if var == 'mgmt': mgmt = float(m.group(1)) / 100; found = True
+                        elif var == 'cust': cust = float(m.group(1)) / 100; found = True
+                        elif var == 'sales': sales = float(m.group(1)) / 100; found = True
             if found:
-                return round(mgmt + cust + sales, 4)
+                return (round(mgmt + cust + sales, 4), False)
     except Exception:
         pass
 
@@ -47,11 +93,22 @@ def _scrape_fees(http, code: str) -> Optional[float]:
                 purchase_rate = float(m.group(1)) / 100
                 # Rough heuristic for QDII: mgmt ≈ purchase_rate * 0.4, cust ≈ purchase_rate * 0.15
                 estimated = round(purchase_rate * 0.4 + purchase_rate * 0.15, 4)
-                return estimated
+                return (estimated, True)
     except Exception:
         pass
 
-    return None
+    # Source 3: Type-based conservative estimate
+    if name:
+        from .fund_classifier import classify_fund
+        try:
+            fc = classify_fund(code, name)
+            fee = _estimate_by_type(fc)
+            if fee is not None:
+                return (fee, True)
+        except Exception:
+            pass
+
+    return (None, False)
 
 
 def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
@@ -88,7 +145,10 @@ def get_metadata(http, code: str, force_refresh: bool = False) -> dict:
     except Exception:
         pass
 
-    info["annual_fee"] = _scrape_fees(http, code)
+    fee, estimated = _scrape_fees(http, code, info.get("name"))
+    info["annual_fee"] = fee
+    if fee is not None and estimated:
+        info["annual_fee_estimated"] = True
 
     # 存入 SQLite
     upsert_meta(code, info)

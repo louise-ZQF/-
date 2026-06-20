@@ -750,8 +750,61 @@ function renderWatchlistResults(results){
       </div>
       ${factorHtml}
       ${corrHtml}
+      <button class="btn ghost wl-transfer-btn" data-code="${r.code}" data-name="${esc(r.name)}" style="margin-top:6px;font-size:11px">📥 一键转入持仓</button>
     </div>`;
   }).join('');
+  el.querySelectorAll('.wl-transfer-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      transferToHoldings(btn.dataset.code, btn.dataset.name);
+    });
+  });
+}
+
+// ---------- 一键转入持仓 ----------
+async function transferToHoldings(code, name){
+  const amount=prompt(`为 ${name} 设置持仓金额（元）：`, '10000');
+  if(amount===null) return;
+  const dca=prompt('每日定投金额（元）：', '100');
+  if(dca===null) return;
+
+  try{
+    const r=await fetch('/api/fund/search?code='+code);
+    const d=await r.json();
+    if(d.error){ alert(d.error); return; }
+
+    const fund=d.fund;
+    fund.current_value=parseFloat(amount)||0;
+    fund.is_dca=true;
+    const dcaAmt=parseFloat(dca)||0;
+    if(dcaAmt>0){
+      fund.dca_plan={frequency:'daily', amount:dcaAmt, enabled:true};
+    }
+
+    const hr=await fetch('/api/holdings');
+    const hd=await hr.json();
+    let holdings=hd.holdings||[];
+    const exist=holdings.findIndex(h=>h.code===code);
+    if(exist>=0){
+      holdings[exist]={...holdings[exist], ...fund};
+    } else {
+      holdings.push(fund);
+    }
+
+    const sr=await fetch('/api/holdings', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({holdings})
+    });
+    const sd=await sr.json();
+    if(sd.ok){
+      alert(`已添加 ${name} 到持仓 ✅`);
+    } else {
+      alert('保存失败: '+(sd.error||'未知错误'));
+    }
+  }catch(e){
+    alert('转入失败: '+e.message);
+  }
 }
 
 // ---------- 基金筛选 ----------
