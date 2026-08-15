@@ -1,5 +1,11 @@
 # 基金组合智能分析与每日建议系统（fund-analyzer）
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Web-Flask-000000.svg)](https://flask.palletsprojects.com/)
+[![Docker](https://img.shields.io/badge/Deploy-Docker-2496ED.svg)](https://www.docker.com/)
+[![中文](https://img.shields.io/badge/文档-中文-FF6B6B.svg)](README.md)
+
 一个面向**以美股 QDII 为主、A 股为辅**的个人基金组合的自动分析工具。它每天为你做两件事：
 
 1. **每日操作建议** —— 把你的持仓导入，结合估值分位、趋势、RSI、最大回撤、夏普、持仓盈亏等指标，
